@@ -1332,6 +1332,62 @@ table.grid thead th.sticky-col {
   box-shadow: inset 0 1px 0 var(--glass-spec-top), var(--glass-shadow-sm);
 }
 
+/* Problem strip: branches needing attention, worst first */
+.problem-strip {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-m);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--glass-border-outer);
+  background: var(--glass-bg);
+  box-shadow: inset 0 1px 0 var(--glass-spec-top), var(--glass-shadow-sm);
+}
+.problem-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.problem-rows {
+  display: grid;
+  gap: var(--space-1);
+  max-height: 264px;
+  overflow-y: auto;
+}
+.problem-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s, 10px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.problem-row.is-silent { background: var(--c-err-soft); border-color: var(--c-err-line); }
+.problem-row.is-partial { background: var(--c-warn-soft); border-color: var(--c-warn-line); }
+.problem-row:focus-visible { outline: 2px solid var(--c-err); outline-offset: 2px; }
+.problem-dot { width: 10px; height: 10px; border-radius: 50%; }
+.problem-row.is-silent .problem-dot { background: var(--c-err); }
+.problem-row.is-partial .problem-dot { background: var(--c-warn); }
+.problem-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.problem-state { font-size: var(--fs-s); font-weight: 700; white-space: nowrap; }
+.problem-row.is-silent .problem-state { color: var(--c-err); }
+.problem-row.is-partial .problem-state { color: var(--c-warn); }
+@media (max-width: 520px) {
+  .problem-row { grid-template-columns: auto 1fr; }
+  .problem-state { grid-column: 2; white-space: normal; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .problem-row.is-silent .problem-dot { animation: problem-blink 1.4s ease-in-out infinite; }
+}
+@keyframes problem-blink { 50% { opacity: 0.25; } }
+
 .branch-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1397,8 +1453,9 @@ table.grid thead th.sticky-col {
   opacity: 0.48;
 }
 .p-dot.unknown {
-  background: var(--c-warn);
-  opacity: 0.72;
+  /* Neutral, matches the map's "no data" tokens; amber now means "some machines down". */
+  background: var(--c-muted-ink);
+  opacity: 0.85;
 }
 
 .switch-pill {
@@ -1487,9 +1544,9 @@ table.grid thead th.sticky-col {
 }
 .presence-map-stage {
   position: relative;
-  min-height: 410px;
-  height: 54vh;
-  max-height: 580px;
+  min-height: 420px;
+  height: 70vh;
+  max-height: 820px;
   border-radius: var(--radius-l);
   overflow: hidden;
   background: var(--glass-bg-strong);
@@ -1497,6 +1554,11 @@ table.grid thead th.sticky-col {
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-spec-top), var(--glass-shadow);
+}
+/* Wide monitors: use the space instead of a narrow centre column. */
+@media (min-width: 1600px) {
+  :root { --size-max: 1560px; }
+  .presence-map-stage { height: 74vh; max-height: 960px; }
 }
 .presence-map-canvas-host {
   position: absolute;

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261123a">
+<link rel="stylesheet" href="itm-theme.css?v=20261123b">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -2804,7 +2804,7 @@
     if (mapModulePromise) return mapModulePromise;
     mapModulePromise = new Promise(function (resolve) {
       var s = document.createElement('script');
-      s.src = 'presence-map.js?v=20261123a';
+      s.src = 'presence-map.js?v=20261123b';
       s.onload = function () { resolve(window.ItmPresenceMap || null); };
       s.onerror = function () { mapModulePromise = null; resolve(null); };
       document.head.appendChild(s);
@@ -2911,6 +2911,73 @@
     };
   }
 
+  // Branches that need attention, worst first. Uses unfiltered data so search/filter never hides a problem.
+  function presenceProblems(data) {
+    var showRand = state.presenceRandomMac;
+    var out = [];
+    (data.sites || []).forEach(function (s) {
+      if (s.site_id === null || s.site_id === undefined) return; // unmapped ifaces have their own panel
+      var devs = (s.devices || []).filter(function (d) { return showRand || !d.random_mac; });
+      var online = devs.filter(function (d) { return d.online; }).length;
+      if (!devs.length || online === devs.length) return;
+      var lastSeen = '';
+      devs.forEach(function (d) { if (d.last_seen > lastSeen) lastSeen = d.last_seen; });
+      out.push({ key: siteGroupKey(s), code: s.code, name: s.name, online: online, total: devs.length, down: devs.length - online, lastSeen: lastSeen });
+    });
+    out.sort(function (a, b) {
+      var as = a.online === 0 ? 0 : 1;
+      var bs = b.online === 0 ? 0 : 1;
+      if (as !== bs) return as - bs;
+      if (as === 0) return String(a.lastSeen).localeCompare(String(b.lastSeen)); // longest silent first
+      return b.down - a.down;
+    });
+    return out;
+  }
+
+  function renderProblemStrip(data) {
+    var box = el('section', 'problem-strip');
+    box.setAttribute('aria-label', 'สาขาที่ต้องดู');
+    var head = el('div', 'problem-head');
+    if (!data.collector_ok) {
+      head.appendChild(el('strong', '', 'สาขาที่ต้องดู'));
+      head.appendChild(el('span', 'badge warn', 'ไม่มีข้อมูล'));
+      box.appendChild(head);
+      box.appendChild(el('p', 'page-sub', 'ตัวรับ log ไม่ได้ส่งข้อมูลเกิน 5 นาที จึงยังบอกไม่ได้ว่าสาขาไหนดับ'));
+      return box;
+    }
+    var list = presenceProblems(data);
+    head.appendChild(el('strong', '', 'สาขาที่ต้องดู (' + list.length + ')'));
+    box.appendChild(head);
+    if (!list.length) {
+      box.appendChild(el('div', 'badge ok', 'ทุกสาขาปกติ'));
+      return box;
+    }
+    var rows = el('div', 'problem-rows');
+    list.forEach(function (p) {
+      var silent = p.online === 0;
+      var row = el('button', 'problem-row ' + (silent ? 'is-silent' : 'is-partial'));
+      row.type = 'button';
+      row.appendChild(el('span', 'problem-dot'));
+      var name = el('span', 'problem-name');
+      name.appendChild(el('span', 'site-code', p.code));
+      name.appendChild(document.createTextNode(' ' + p.name));
+      row.appendChild(name);
+      row.appendChild(el('span', 'problem-state', silent
+        ? 'ดับทั้งสาขา 0/' + p.total + (p.lastSeen ? ' · ตั้งแต่ ' + bkkTimeHm(p.lastSeen) : '')
+        : 'ดับ ' + p.down + ' จาก ' + p.total + ' เครื่อง'));
+      row.addEventListener('click', function () {
+        state.presenceFilter = 'all';
+        state.presenceSearch = '';
+        state.presenceSelectedKey = p.key;
+        state.presenceScrollPending = true;
+        renderPresenceView(false);
+      });
+      rows.appendChild(row);
+    });
+    box.appendChild(rows);
+    return box;
+  }
+
   function renderPresenceView(isSoftUpdate) {
     var data = state.presenceData;
     if (!data) return;
@@ -2950,7 +3017,7 @@
     var modeSeg = el('div', 'seg');
     modeSeg.setAttribute('role', 'group');
     modeSeg.setAttribute('aria-label', 'สลับมุมมองแผนที่หรือรายการ');
-    [['map', 'แผนที่ 3 มิติ'], ['list', 'มุมมองรายการ']].forEach(function (m) {
+    [['map', 'แผนที่'], ['list', 'มุมมองรายการ']].forEach(function (m) {
       var b = el('button', '', m[1]);
       b.type = 'button';
       b.setAttribute('aria-pressed', state.presenceViewMode === m[0] ? 'true' : 'false');
@@ -2973,6 +3040,8 @@
       banner.appendChild(el('span', '', 'ตัวรับ log ไม่ได้ส่งข้อมูลเกิน 5 นาที สถานะด้านล่างอาจไม่ล่าสุด (แสดงเป็น "ไม่มีข้อมูล")'));
       v.appendChild(banner);
     }
+
+    v.appendChild(renderProblemStrip(data));
 
     // KPI Row
     var kpiGrid = el('div', 'kpi-grid');
@@ -3277,6 +3346,12 @@
       state.presenceSelectedKey = chosen.key;
     }
     if (!chosen) return;
+    if (state.presenceScrollPending) {
+      state.presenceScrollPending = false;
+      setTimeout(function () {
+        detailHost.scrollIntoView({ behavior: isReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      }, 0);
+    }
 
     var secCard = el('div', 'sec-card');
     secCard.style.marginTop = '16px';

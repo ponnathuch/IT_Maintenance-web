@@ -149,9 +149,10 @@
         metroBorder: 0x67e8f9,
         grid: 0x182b3c,
         ok: 0x34d399,
-        partial: 0x38bdf8,
+        partial: 0xfbbf24,
         silent: 0xf87171,
-        stale: 0xfbbf24,
+        stale: 0x64748b,
+        hub: 0x67e8f9,
         empty: 0x64748b,
         selectRing: 0xffffff,
         leader: 0x476b87
@@ -165,9 +166,10 @@
       metroBorder: 0x07505c,
       grid: 0xc9dfed,
       ok: 0x108548,
-      partial: 0x0a8ea0,
+      partial: 0xd97706,
       silent: 0xd92d20,
-      stale: 0xd97706,
+      stale: 0x64748b,
+      hub: 0x0a6c7a,
       empty: 0x64748b,
       selectRing: 0x07505c,
       leader: 0x64879e
@@ -255,6 +257,127 @@
     return group;
   }
 
+  // Original "pill buddy" mascot drawn on canvas: capsule body in the status colour, anime eyes,
+  // one face per status. Four shared textures, reused by every branch sprite.
+  function makeMascotTexture(THREE, status, colorHex) {
+    var cv = document.createElement('canvas');
+    cv.width = 128;
+    cv.height = 160;
+    var g = cv.getContext('2d');
+    var col = '#' + colorHex.toString(16).padStart(6, '0');
+    var ink = '#22303c';
+
+    g.fillStyle = 'rgba(0,0,0,0.18)';
+    g.beginPath();
+    g.ellipse(64, 152, 34, 6, 0, 0, Math.PI * 2);
+    g.fill();
+
+    function capsule() {
+      g.beginPath();
+      g.moveTo(24, 70);
+      g.arc(64, 70, 40, Math.PI, 0);
+      g.lineTo(104, 110);
+      g.arc(64, 110, 40, 0, Math.PI);
+      g.closePath();
+    }
+    g.save();
+    capsule();
+    g.clip();
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 128, 96);
+    g.fillStyle = col;
+    g.fillRect(0, 96, 128, 70);
+    g.restore();
+    g.lineWidth = 4;
+    g.strokeStyle = ink;
+    capsule();
+    g.stroke();
+
+    // pharmacy cross on the lower half
+    g.fillStyle = 'rgba(255,255,255,0.92)';
+    g.fillRect(58, 108, 12, 30);
+    g.fillRect(49, 117, 30, 12);
+
+    function eye(x, y) {
+      g.fillStyle = ink;
+      g.beginPath();
+      g.ellipse(x, y, 8, 11, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(x - 3, y - 4, 3.4, 0, Math.PI * 2);
+      g.fill();
+      g.beginPath();
+      g.arc(x + 3, y + 4, 1.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    function blush() {
+      g.fillStyle = 'rgba(255,120,150,0.45)';
+      g.beginPath();
+      g.ellipse(36, 88, 8, 4, 0, 0, Math.PI * 2);
+      g.ellipse(92, 88, 8, 4, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.lineCap = 'round';
+    g.lineWidth = 3.5;
+    g.strokeStyle = ink;
+
+    if (status === 'ok') {
+      eye(48, 70);
+      eye(80, 70);
+      blush();
+      g.fillStyle = '#e8577a';
+      g.beginPath();
+      g.arc(64, 84, 8, 0, Math.PI);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    } else if (status === 'partial') {
+      eye(48, 72);
+      eye(80, 72);
+      blush();
+      g.beginPath();
+      g.moveTo(38, 56); g.lineTo(54, 60);
+      g.moveTo(90, 56); g.lineTo(74, 60);
+      g.moveTo(54, 90); g.quadraticCurveTo(59, 85, 64, 90); g.quadraticCurveTo(69, 95, 74, 90);
+      g.stroke();
+      g.fillStyle = '#7cc8ff';
+      g.beginPath();
+      g.moveTo(102, 44);
+      g.quadraticCurveTo(112, 60, 102, 64);
+      g.quadraticCurveTo(92, 60, 102, 44);
+      g.fill();
+    } else if (status === 'silent') {
+      g.beginPath();
+      g.moveTo(40, 64); g.lineTo(54, 72); g.lineTo(40, 80);
+      g.moveTo(88, 64); g.lineTo(74, 72); g.lineTo(88, 80);
+      g.stroke();
+      g.fillStyle = ink;
+      g.beginPath();
+      g.ellipse(64, 90, 7, 6, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#7cc8ff';
+      g.fillRect(42, 80, 5, 18);
+      g.fillRect(81, 80, 5, 18);
+    } else {
+      g.beginPath();
+      g.arc(48, 72, 7, 0, Math.PI);
+      g.moveTo(87, 72);
+      g.arc(80, 72, 7, 0, Math.PI);
+      g.moveTo(58, 88); g.lineTo(70, 88);
+      g.stroke();
+      g.fillStyle = ink;
+      g.font = 'bold 18px sans-serif';
+      g.fillText('z', 96, 40);
+      g.font = 'bold 13px sans-serif';
+      g.fillText('z', 110, 26);
+    }
+
+    var tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
   function siteKeyValue(site) {
     if (site.site_id !== null && site.site_id !== undefined) return site.site_id;
     return site.code || (site.ifaces && site.ifaces[0]) || '';
@@ -294,8 +417,9 @@
     var legend = document.createElement('div');
     legend.className = 'presence-map-legend';
     legend.innerHTML =
-      '<span><span class="p-dot online"></span> ออนไลน์</span>' +
-      '<span><span class="p-dot" style="background:var(--c-err)"></span> เงียบทั้งสาขา</span>' +
+      '<span><span class="p-dot online"></span> ปกติ</span>' +
+      '<span><span class="p-dot" style="background:var(--c-warn)"></span> ดับบางเครื่อง</span>' +
+      '<span><span class="p-dot" style="background:var(--c-err)"></span> ดับทั้งสาขา</span>' +
       '<span><span class="p-dot unknown"></span> ไม่มีข้อมูล</span>';
 
     var tooltip = document.createElement('div');
@@ -365,6 +489,8 @@
 
         var markersGroup = new THREE.Group();
         scene.add(markersGroup);
+        var mascotGroup = new THREE.Group();
+        scene.add(mascotGroup);
 
         // Selection indicator ring
         var selRingGeom = new THREE.RingGeometry(0.45, 0.68, 32);
@@ -380,8 +506,8 @@
 
         // Camera spherical orbit state
         var presets = {
-          metro: { targetX: 0.05, targetZ: -0.02, radius: 13.5, phi: 0.74, theta: 0.12 },
-          nation: { targetX: 0.0, targetZ: 2.0, radius: 112.0, phi: 0.84, theta: 0.06 }
+          metro: { targetX: 0.05, targetZ: 0.3, radius: 11, phi: 0.62, theta: 0.08 },
+          nation: { targetX: 0.0, targetZ: 6.0, radius: 120.0, phi: 0.5, theta: 0.04 }
         };
         var camState = {
           targetX: presets.metro.targetX,
@@ -412,6 +538,16 @@
 
         var pickMeshes = [];
         var pulseRings = [];
+        var mascots = [];
+        var mascotMats = {};
+        ['ok', 'partial', 'silent', 'none'].forEach(function (st) {
+          var hex = st === 'none' ? pal.stale : pal[st];
+          mascotMats[st] = new THREE.SpriteMaterial({ map: makeMascotTexture(THREE, st, hex), transparent: true });
+        });
+        var MASCOT_W = 0.5;
+        var MASCOT_H = MASCOT_W * 1.25;
+        var flowState = null; // { points, particles: [{ curve, t, speed, status }] }
+        var HUB_Y = 3.4;
         var currentData = initialData || { collector_ok: true, sites: [] };
 
         function clearGroup(grp) {
@@ -432,8 +568,11 @@
         function rebuildMarkers(data) {
           currentData = data || { collector_ok: true, sites: [] };
           clearGroup(markersGroup);
+          while (mascotGroup.children.length) mascotGroup.remove(mascotGroup.children[0]);
           pickMeshes = [];
           pulseRings = [];
+          mascots = [];
+          flowState = null;
           selRing.visible = false;
 
           var collectorOk = Boolean(currentData.collector_ok);
@@ -449,7 +588,7 @@
           });
 
           // Decide initial camera preset: if >50% of mapped sites are in Bangkok metro, start in metro focus
-          var positioned = deOverlapPositions(withCoords, 0.56);
+          var positioned = deOverlapPositions(withCoords, 0.6);
 
           var leaderMat = new THREE.LineBasicMaterial({
             color: pal.leader,
@@ -465,30 +604,17 @@
             var ratio = total > 0 ? online / total : 0;
             var isSilent = collectorOk && total > 0 && online === 0;
 
-            var colorHex = !collectorOk
-              ? pal.stale
-              : isSilent
-                ? pal.silent
-                : total === 0
-                  ? pal.empty
-                  : ratio >= 0.99
-                    ? pal.ok
-                    : pal.partial;
+            var status = !collectorOk || total === 0 ? 'none' : isSilent ? 'silent' : ratio >= 0.99 ? 'ok' : 'partial';
+            var colorHex = status === 'none' ? pal.stale : pal[status];
 
-            var pillarH = !collectorOk
-              ? 0.9
-              : isSilent
-                ? 1.55
-                : total === 0
-                  ? 0.45
-                  : 0.65 + ratio * 1.65 + Math.min(total, 10) * 0.06;
-
-            var radius = isSilent ? 0.25 : 0.21;
-            var geom = new THREE.CylinderGeometry(radius * 0.85, radius, pillarH, 10);
+            // Equal low hex tokens: status is colour, not height, so nothing hides behind a tall neighbour.
+            var pillarH = 0.1;
+            var radius = 0.22;
+            var geom = new THREE.CylinderGeometry(radius, radius, pillarH, 6);
             var mat = new THREE.MeshLambertMaterial({
               color: colorHex,
               emissive: colorHex,
-              emissiveIntensity: isSilent ? 0.35 : 0.12
+              emissiveIntensity: isSilent ? 0.45 : 0.15
             });
 
             var mesh = new THREE.Mesh(geom, mat);
@@ -499,10 +625,23 @@
               stringKey: String(s.key !== undefined ? s.key : siteKeyValue(s)),
               wx: item.x,
               wz: item.z,
-              topY: pillarH + 0.15
+              topY: pillarH + MASCOT_H + 0.05,
+              status: status
             };
             markersGroup.add(mesh);
             pickMeshes.push(mesh);
+
+            // Sprite material is shared, so clearGroup must not dispose it: keep it out of markersGroup disposal.
+            var sprite = new THREE.Sprite(mascotMats[status]);
+            sprite.center.set(0.5, 0);
+            sprite.scale.set(MASCOT_W, MASCOT_H, 1);
+            sprite.position.set(item.x, pillarH + 0.02, item.z);
+            sprite.userData = mesh.userData;
+            sprite.userData.baseY = pillarH + 0.02;
+            sprite.userData.phase = i * 0.61;
+            mascotGroup.add(sprite);
+            pickMeshes.push(sprite);
+            mascots.push(sprite);
 
             // Leader line from true coordinate if shifted by de-crowding
             var shiftSq =
@@ -545,6 +684,96 @@
               selRing.visible = true;
             }
           }
+          buildFlows(collectorOk);
+        }
+
+        // Hub = central Sophos. HQ-PDM coords, else PM017 (same building), else a fixed point.
+        function hubPosition(sites) {
+          var pick = function (code) {
+            return (sites || []).find(function (s) {
+              return s.code === code && s.lat !== null && s.lat !== undefined && Number.isFinite(Number(s.lat));
+            });
+          };
+          var h = pick('HQ-PDM') || pick('PM017');
+          return projectLonLat(h ? Number(h.lng) : 100.5957, h ? Number(h.lat) : 13.7654);
+        }
+
+        var hubMesh = null;
+        var hubGeom = new THREE.OctahedronGeometry(0.42, 0);
+        var hubMat = new THREE.MeshLambertMaterial({ color: pal.hub, emissive: pal.hub, emissiveIntensity: 0.55 });
+
+        // One arc per mapped branch into the hub; light particles travel along healthy links only.
+        function buildFlows(collectorOk) {
+          var hp = hubPosition(currentData.sites);
+          if (!hubMesh) {
+            hubMesh = new THREE.Mesh(hubGeom, hubMat);
+            scene.add(hubMesh);
+          }
+          hubMesh.position.set(hp.x, HUB_Y, hp.z);
+          var hub = new THREE.Vector3(hp.x, HUB_Y, hp.z);
+
+          var particles = [];
+          var mats = {};
+          function lineMat(status) {
+            if (mats[status]) return mats[status];
+            var m;
+            if (status === 'silent') {
+              m = new THREE.LineDashedMaterial({ color: pal.silent, dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.95 });
+            } else {
+              var op = status === 'ok' ? 0.3 : status === 'partial' ? 0.6 : 0.22;
+              m = new THREE.LineBasicMaterial({ color: status === 'none' ? pal.stale : pal[status], transparent: true, opacity: op });
+            }
+            mats[status] = m;
+            return m;
+          }
+
+          for (var i = 0; i < pickMeshes.length; i++) {
+            var u = pickMeshes[i].userData;
+            var start = new THREE.Vector3(u.wx, u.topY - 0.1, u.wz);
+            var dist = start.distanceTo(hub);
+            if (dist < 0.3) continue;
+            var mid = start.clone().lerp(hub, 0.5);
+            mid.y += Math.min(4, 0.7 + dist * 0.3);
+            var curve = new THREE.QuadraticBezierCurve3(start, mid, hub);
+            var g = new THREE.BufferGeometry().setFromPoints(curve.getPoints(24));
+            var line = new THREE.Line(g, lineMat(u.status));
+            if (u.status === 'silent') line.computeLineDistances();
+            markersGroup.add(line);
+
+            if (!collectorOk || (u.status !== 'ok' && u.status !== 'partial')) continue;
+            var online = Number(u.site.online || 0);
+            var n = Math.max(1, Math.min(3, Math.ceil(online / 4)));
+            var speed = (u.status === 'ok' ? 0.42 : 0.18) / Math.max(1, dist * 0.12);
+            for (var k = 0; k < n; k++) {
+              particles.push({ curve: curve, t: (k / n + i * 0.137) % 1, speed: speed, status: u.status });
+            }
+          }
+
+          if (!particles.length) return;
+          var pos = new Float32Array(particles.length * 3);
+          var col = new Float32Array(particles.length * 3);
+          var cOk = new THREE.Color(pal.ok);
+          var cPart = new THREE.Color(pal.partial);
+          particles.forEach(function (p, idx) {
+            var c = p.status === 'ok' ? cOk : cPart;
+            col[idx * 3] = c.r;
+            col[idx * 3 + 1] = c.g;
+            col[idx * 3 + 2] = c.b;
+          });
+          var pg = new THREE.BufferGeometry();
+          pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          pg.setAttribute('color', new THREE.BufferAttribute(col, 3));
+          var pm = new THREE.PointsMaterial({
+            size: 7,
+            sizeAttenuation: false,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.95,
+            depthWrite: false
+          });
+          var points = new THREE.Points(pg, pm);
+          markersGroup.add(points);
+          flowState = { points: points, particles: particles, tmp: new THREE.Vector3(), last: 0 };
         }
 
         rebuildMarkers(initialData);
@@ -585,8 +814,10 @@
           var stText = !currentData.collector_ok
             ? 'ไม่มีข้อมูล (' + s.total + ' เครื่อง)'
             : s.total > 0 && s.online === 0
-              ? 'เงียบทั้งสาขา 0/' + s.total + ' เครื่อง'
-              : 'ออนไลน์ ' + s.online + '/' + s.total + ' เครื่อง';
+              ? 'ดับทั้งสาขา 0/' + s.total + ' เครื่อง'
+              : s.online < s.total
+                ? 'ดับ ' + (s.total - s.online) + ' จาก ' + s.total + ' เครื่อง'
+                : 'ปกติ ' + s.online + '/' + s.total + ' เครื่อง';
 
           // Build with textContent: site names and Sophos iface names are untrusted text.
           tooltip.textContent = '';
@@ -744,7 +975,7 @@
             camState.radius * cosPhi,
             camState.targetZ + camState.radius * sinPhi * cosTheta
           );
-          camera.lookAt(camState.targetX, 0, camState.targetZ);
+          camera.lookAt(camState.targetX, 1.1, camState.targetZ);
 
           // Pulse silent branch beacons
           var elapsed = (now - t0) * 0.0032;
@@ -754,6 +985,42 @@
             var sc = 1 + phase * 1.45;
             pr.scale.set(sc, sc, 1);
             pr.material.opacity = (1 - phase) * 0.82;
+          }
+
+          if (hubMesh) hubMesh.rotation.y = elapsed * 0.4;
+          var ts = now / 1000;
+          for (var mi = 0; mi < mascots.length; mi++) {
+            var ms = mascots[mi];
+            var md = ms.userData;
+            var ph = md.phase;
+            if (md.status === 'ok') {
+              ms.position.y = md.baseY + Math.abs(Math.sin(ts * 3 + ph)) * 0.12;
+              ms.material.rotation = 0;
+            } else if (md.status === 'partial') {
+              ms.position.y = md.baseY;
+              ms.material.rotation = 0;
+              ms.position.x = md.wx + Math.sin(ts * 2 + ph) * 0.04;
+            } else if (md.status === 'silent') {
+              ms.position.y = md.baseY;
+              ms.position.x = md.wx + Math.sin(ts * 22 + ph) * 0.018;
+            } else {
+              ms.position.y = md.baseY;
+              ms.scale.y = MASCOT_H * (1 + Math.sin(ts * 1.3 + ph) * 0.04);
+            }
+          }
+          if (flowState) {
+            var dt = flowState.last ? Math.min(0.05, (now - flowState.last) / 1000) : 0;
+            flowState.last = now;
+            var arr = flowState.points.geometry.attributes.position.array;
+            for (var f = 0; f < flowState.particles.length; f++) {
+              var fp = flowState.particles[f];
+              fp.t = (fp.t + fp.speed * dt) % 1;
+              fp.curve.getPoint(fp.t, flowState.tmp);
+              arr[f * 3] = flowState.tmp.x;
+              arr[f * 3 + 1] = flowState.tmp.y;
+              arr[f * 3 + 2] = flowState.tmp.z;
+            }
+            flowState.points.geometry.attributes.position.needsUpdate = true;
           }
 
           renderer.render(scene, camera);
@@ -777,6 +1044,12 @@
           if (baseRingMat) baseRingMat.dispose();
           if (selRingGeom) selRingGeom.dispose();
           if (selRingMat) selRingMat.dispose();
+          hubGeom.dispose();
+          hubMat.dispose();
+          Object.keys(mascotMats).forEach(function (k) {
+            mascotMats[k].map.dispose();
+            mascotMats[k].dispose();
+          });
           try {
             renderer.dispose();
             renderer.forceContextLoss();
