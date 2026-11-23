@@ -1727,3 +1727,16 @@ table.grid thead th.sticky-col {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* ---------- P2: Problem Strip Sub-groups ---------- */
+.problem-group + .problem-group {
+  margin-top: var(--space-2);
+}
+.problem-group-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--c-ink-2);
+}
+.problem-group-title.is-err { color: var(--c-err); }
+.problem-group-title.is-warn { color: var(--c-warn); }

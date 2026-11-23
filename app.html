@@ -2778,7 +2778,14 @@
         var tbody = el('tbody');
         rows.forEach(function (row) {
           var tr = el('tr');
-          tr.appendChild(el('td', 'sticky-col site-code', row.iface));
+          var tdIface = el('td', 'sticky-col site-code');
+          tdIface.appendChild(document.createTextNode(row.iface));
+          if (row.sys_iface) {
+            var sysSpan = el('span', 'badge muted', row.sys_iface);
+            sysSpan.style.marginLeft = '6px';
+            tdIface.appendChild(sysSpan);
+          }
+          tr.appendChild(tdIface);
           tr.appendChild(el('td', '', row.devices + ' เครื่อง'));
 
           var tdSel = el('td');
@@ -2828,6 +2835,42 @@
 
   function siteGroupKey(s) {
     return s.site_id !== null && s.site_id !== undefined ? String(s.site_id) : String(s.code || '');
+  }
+
+  function parseTimeSecClient(raw, fallbackSec) {
+    var m = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(raw || '').trim());
+    if (!m) return fallbackSec;
+    var hh = Number(m[1]), mm = Number(m[2]), ss = m[3] ? Number(m[3]) : 0;
+    if (hh > 23 || mm > 59 || ss > 59) return fallbackSec;
+    return hh * 3600 + mm * 60 + ss;
+  }
+
+  // Same 4-case operating-hours logic as public.itm_in_open_hours / logic.ts inOpenHours.
+  function inOpenHoursBkk(openTime, closeTime, closedDow, nowIso) {
+    var ms = typeof nowIso === 'number' ? nowIso : Date.parse(String(nowIso || ''));
+    if (!Number.isFinite(ms)) return false;
+    var openSec = parseTimeSecClient(openTime, 8 * 3600);
+    var closeSec = parseTimeSecClient(closeTime, 21 * 3600);
+    var bkk = new Date(ms + 7 * 3600 * 1000);
+    var timeSec = bkk.getUTCHours() * 3600 + bkk.getUTCMinutes() * 60 + bkk.getUTCSeconds();
+    var inTime = false;
+    var shiftMs = bkk.getTime();
+    if (openSec === closeSec) {
+      inTime = true;
+    } else if (closeSec < openSec) {
+      inTime = timeSec >= openSec || timeSec < closeSec;
+      if (timeSec < closeSec) shiftMs -= 24 * 3600 * 1000;
+    } else {
+      inTime = timeSec >= openSec && timeSec < closeSec;
+    }
+    if (!inTime) return false;
+    if (Array.isArray(closedDow) && closedDow.length > 0) {
+      var dow = new Date(shiftMs).getUTCDay();
+      for (var i = 0; i < closedDow.length; i++) {
+        if (Number(closedDow[i]) === dow) return false;
+      }
+    }
+    return true;
   }
 
   function startPresenceAutoRefresh() {
@@ -2908,7 +2951,20 @@
 
       totalOnline += onlineCnt;
       totalDevices += totalCnt;
-      var isSilent = collectorOk && totalCnt > 0 && onlineCnt === 0;
+      var inOpenHours = typeof s.in_open_hours === 'boolean'
+        ? s.in_open_hours
+        : (s.site_id ? inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now) : true);
+      var branchStatus = !collectorOk
+        ? 'no_data'
+        : totalCnt === 0
+          ? 'empty'
+          : (onlineCnt === 0 && !inOpenHours)
+            ? 'closed'
+            : (onlineCnt === 0 && inOpenHours)
+              ? 'tunnel_down'
+              : (onlineCnt < totalCnt ? 'partial_down' : 'ok');
+      var isSilent = branchStatus === 'tunnel_down';
+      var isClosed = branchStatus === 'closed';
       if (isSilent) silentBranches++;
 
       // Filter devices by search and online/offline filter
@@ -2916,13 +2972,13 @@
         if (stFilter === 'online' && (!collectorOk || !d.online)) return false;
         if (stFilter === 'offline' && (!collectorOk || d.online)) return false;
         if (q) {
-          var hay = (d.mac + ' ' + d.ip + ' ' + (d.label || '') + ' ' + (d.device_name || '') + ' ' + s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ')).toLowerCase();
+          var hay = (d.mac + ' ' + d.ip + ' ' + (d.label || '') + ' ' + (d.device_name || '') + ' ' + s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ') + ' ' + (s.sys_ifaces || []).join(' ')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
         }
         return true;
       });
 
-      var siteMatchesQuery = !q || (s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ')).toLowerCase().indexOf(q) !== -1;
+      var siteMatchesQuery = !q || (s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ') + ' ' + (s.sys_ifaces || []).join(' ')).toLowerCase().indexOf(q) !== -1;
       if (q && !matchingDevs.length && !siteMatchesQuery) return;
       if (stFilter === 'online' && onlineCnt === 0 && !q) return;
       if (stFilter === 'offline' && totalCnt > 0 && onlineCnt === totalCnt && !q) return;
@@ -2939,10 +2995,14 @@
         close_time: s.close_time || '21:00',
         closed_dow: s.closed_dow || [],
         hours_note: s.hours_note || '',
+        in_open_hours: inOpenHours,
+        branch_status: branchStatus,
         ifaces: s.ifaces || [],
+        sys_ifaces: s.sys_ifaces || [],
         online: onlineCnt,
         total: totalCnt,
         isSilent: isSilent,
+        isClosed: isClosed,
         first_today: s.first_today,
         devices: matchingDevs,
         allDevices: visDevs,
@@ -2970,6 +3030,7 @@
   }
 
   // Branches that need attention, worst first. Uses unfiltered data so search/filter never hides a problem.
+  // Branches with online === 0 outside their operating hours are marked 'closed' and excluded.
   function presenceProblems(data) {
     var showRand = state.presenceRandomMac;
     var out = [];
@@ -2978,9 +3039,22 @@
       var devs = (s.devices || []).filter(function (d) { return showRand || !d.random_mac; });
       var online = devs.filter(function (d) { return d.online; }).length;
       if (!devs.length || online === devs.length) return;
+      var inOpenHours = typeof s.in_open_hours === 'boolean'
+        ? s.in_open_hours
+        : inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now);
+      if (online === 0 && !inOpenHours) return; // closed outside operating hours is normal
       var lastSeen = '';
       devs.forEach(function (d) { if (d.last_seen > lastSeen) lastSeen = d.last_seen; });
-      out.push({ key: siteGroupKey(s), code: s.code, name: s.name, online: online, total: devs.length, down: devs.length - online, lastSeen: lastSeen });
+      out.push({
+        key: siteGroupKey(s),
+        code: s.code,
+        name: s.name,
+        online: online,
+        total: devs.length,
+        down: devs.length - online,
+        lastSeen: lastSeen,
+        kind: online === 0 ? 'tunnel_down' : 'partial_down'
+      });
     });
     out.sort(function (a, b) {
       var as = a.online === 0 ? 0 : 1;
@@ -3004,35 +3078,53 @@
       return box;
     }
     var list = presenceProblems(data);
+    var tunnelList = list.filter(function (p) { return p.kind === 'tunnel_down'; });
+    var partialList = list.filter(function (p) { return p.kind === 'partial_down'; });
     head.appendChild(el('strong', '', 'สาขาที่ต้องดู (' + list.length + ')'));
+    if (list.length) {
+      var headBadges = el('div', 'row-actions');
+      headBadges.appendChild(el('span', 'badge ' + (tunnelList.length ? 'err' : 'muted'), 'เน็ตสาขาหลุด ' + tunnelList.length));
+      headBadges.appendChild(el('span', 'badge ' + (partialList.length ? 'warn' : 'muted'), 'เครื่องดับบางเครื่อง ' + partialList.length));
+      head.appendChild(headBadges);
+    }
     box.appendChild(head);
     if (!list.length) {
-      box.appendChild(el('div', 'badge ok', 'ทุกสาขาปกติ'));
+      box.appendChild(el('div', 'badge ok', 'ทุกสาขาในเวลาทำการปกติ'));
       return box;
     }
-    var rows = el('div', 'problem-rows');
-    list.forEach(function (p) {
-      var silent = p.online === 0;
-      var row = el('button', 'problem-row ' + (silent ? 'is-silent' : 'is-partial'));
-      row.type = 'button';
-      row.appendChild(el('span', 'problem-dot'));
-      var name = el('span', 'problem-name');
-      name.appendChild(el('span', 'site-code', p.code));
-      name.appendChild(document.createTextNode(' ' + p.name));
-      row.appendChild(name);
-      row.appendChild(el('span', 'problem-state', silent
-        ? 'ดับทั้งสาขา 0/' + p.total + (p.lastSeen ? ' · ตั้งแต่ ' + bkkTimeHm(p.lastSeen) : '')
-        : 'ดับ ' + p.down + ' จาก ' + p.total + ' เครื่อง'));
-      row.addEventListener('click', function () {
-        state.presenceFilter = 'all';
-        state.presenceSearch = '';
-        state.presenceSelectedKey = p.key;
-        state.presenceScrollPending = true;
-        renderPresenceView(false);
+
+    function appendGroup(titleText, tone, items) {
+      if (!items.length) return;
+      var grp = el('div', 'problem-group');
+      grp.appendChild(el('div', 'problem-group-title ' + tone, titleText + ' (' + items.length + ')'));
+      var rows = el('div', 'problem-rows');
+      items.forEach(function (p) {
+        var silent = p.kind === 'tunnel_down';
+        var row = el('button', 'problem-row ' + (silent ? 'is-silent' : 'is-partial'));
+        row.type = 'button';
+        row.appendChild(el('span', 'problem-dot'));
+        var name = el('span', 'problem-name');
+        name.appendChild(el('span', 'site-code', p.code));
+        name.appendChild(document.createTextNode(' ' + p.name));
+        row.appendChild(name);
+        row.appendChild(el('span', 'problem-state', silent
+          ? 'เงียบทั้งสาขา 0/' + p.total + (p.lastSeen ? ' · ล่าสุด ' + bkkTimeHm(p.lastSeen) : '')
+          : 'ดับ ' + p.down + ' จาก ' + p.total + ' เครื่อง'));
+        row.addEventListener('click', function () {
+          state.presenceFilter = 'all';
+          state.presenceSearch = '';
+          state.presenceSelectedKey = p.key;
+          state.presenceScrollPending = true;
+          renderPresenceView(false);
+        });
+        rows.appendChild(row);
       });
-      rows.appendChild(row);
-    });
-    box.appendChild(rows);
+      grp.appendChild(rows);
+      box.appendChild(grp);
+    }
+
+    appendGroup('เน็ตสาขาหลุด / เงียบทั้งสาขาในเวลาทำการ', 'is-err', tunnelList);
+    appendGroup('เครื่องดับบางเครื่อง', 'is-warn', partialList);
     return box;
   }
 
@@ -3295,7 +3387,9 @@
           ? el('span', 'badge warn', 'ไม่มีข้อมูล')
           : s.isSilent
             ? el('span', 'badge err', 'เงียบ 0/' + s.total)
-            : el('span', 'badge ' + (s.online > 0 ? 'ok' : 'muted'), s.online + '/' + s.total);
+            : s.isClosed
+              ? el('span', 'badge muted', 'ปิดร้าน 0/' + s.total)
+              : el('span', 'badge ' + (s.online > 0 ? 'ok' : 'muted'), s.online + '/' + s.total);
         bh.appendChild(stBadge);
         b.appendChild(bh);
         b.addEventListener('click', function () { onSelectSite(s.key); });
@@ -3353,14 +3447,18 @@
         ? 'warn'
         : s.isSilent
           ? 'err'
-          : s.online > 0
-            ? 'ok'
-            : 'muted';
+          : s.isClosed
+            ? 'muted'
+            : s.online > 0
+              ? 'ok'
+              : 'muted';
       var badgeText = !summary.collector_ok
         ? 'ไม่มีข้อมูล (' + s.total + ')'
         : s.isSilent
           ? 'เงียบทั้งสาขา 0/' + s.total
-          : s.online + '/' + s.total + ' ออนไลน์';
+          : s.isClosed
+            ? 'ปิดร้าน / นอกเวลา (0/' + s.total + ')'
+            : s.online + '/' + s.total + ' ออนไลน์';
       ih.appendChild(el('span', 'badge ' + badgeCls, badgeText));
       card.appendChild(ih);
 
@@ -3384,7 +3482,8 @@
       var meta = el('div', 'item-meta');
       meta.appendChild(el('span', '', 'เปิดเครื่องแรกวันนี้: ' + (s.first_today ? bkkTimeHm(s.first_today) : '-')));
       if (s.ifaces && s.ifaces.length) {
-        meta.appendChild(el('span', '', 'Tunnel: ' + s.ifaces.join(', ')));
+        var sysLabel = (s.sys_ifaces && s.sys_ifaces.length) ? ' [' + s.sys_ifaces.join(', ') + ']' : '';
+        meta.appendChild(el('span', '', 'Tunnel: ' + s.ifaces.join(', ') + sysLabel));
       }
       card.appendChild(meta);
 
@@ -3419,7 +3518,8 @@
     var hrLabel = chosen.site_id
       ? ' · เวลาทำการ ' + (chosen.open_time === chosen.close_time ? '24 ชั่วโมง' : chosen.open_time + '-' + chosen.close_time + ' น.')
       : '';
-    shLeft.appendChild(el('div', 'page-sub', 'เปิดเครื่องแรกวันนี้: ' + (chosen.first_today ? bkkTimeHm(chosen.first_today) : '-') + hrLabel + (chosen.ifaces.length ? ' · Interface: ' + chosen.ifaces.join(', ') : '')));
+    var sysSuffix = (chosen.sys_ifaces && chosen.sys_ifaces.length) ? ' [' + chosen.sys_ifaces.join(', ') + ']' : '';
+    shLeft.appendChild(el('div', 'page-sub', 'เปิดเครื่องแรกวันนี้: ' + (chosen.first_today ? bkkTimeHm(chosen.first_today) : '-') + hrLabel + (chosen.ifaces.length ? ' · Interface: ' + chosen.ifaces.join(', ') + sysSuffix : '')));
     sh.appendChild(shLeft);
 
     if (!chosen.site_id && state.sess && state.sess.isAdmin) {
