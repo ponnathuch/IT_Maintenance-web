@@ -652,7 +652,7 @@
         scene.add(mascotGroup);
 
         // Selection indicator ring
-        var selRingGeom = new THREE.RingGeometry(0.45, 0.68, 32);
+        var selRingGeom = new THREE.RingGeometry(0.28, 0.4, 32);
         selRingGeom.rotateX(-Math.PI / 2);
         var selRingMat = new THREE.MeshBasicMaterial({
           color: pal.selectRing,
@@ -708,8 +708,8 @@
           return mascotTex[k];
         }
         var camRight = new THREE.Vector3();
-        var MASCOT_W = 0.36;
-        var WANDER_R = 0.16; // walking radius around the branch point (world units)
+        var MASCOT_W = 0.26;
+        var WANDER_R = 0.1; // walking radius around the branch point (world units)
         var mascotLast = 0;
         var MASCOT_H = MASCOT_W * 1.625;
         var flowState = null; // { points, particles: [{ curve, t, speed, status }] }
@@ -779,7 +779,7 @@
 
             // Equal low hex tokens: status is colour, not height, so nothing hides behind a tall neighbour.
             var pillarH = 0.1;
-            var radius = 0.27;
+            var radius = 0.19;
             var geom = new THREE.CylinderGeometry(radius, radius, pillarH, 6);
             // Pastel "liquid glass" base: soft colour, translucent, glossy, with a light cap on top.
             var glassHex = GLASS[status];
@@ -851,7 +851,7 @@
 
             // Pulsing beacon ring under silent branches
             if (isSilent) {
-              var pGeom = new THREE.RingGeometry(0.28, 0.48, 24);
+              var pGeom = new THREE.RingGeometry(0.2, 0.3, 24);
               pGeom.rotateX(-Math.PI / 2);
               var pMat = new THREE.MeshBasicMaterial({
                 color: pal.silent,
@@ -924,7 +924,7 @@
           t.rotation = Math.PI / 2;
           return t;
         }
-        var hubGeom = new THREE.CylinderGeometry(0.62, 0.62, 0.1, 48);
+        var hubGeom = new THREE.CylinderGeometry(0.38, 0.38, 0.07, 48);
         hubGeom.rotateX(Math.PI / 2); // stand the coin up; faces look along Z
         var hubFront = coinFaceTexture(false);
         var hubBack = coinFaceTexture(false); // the back cap UVs already mirror it back to readable
