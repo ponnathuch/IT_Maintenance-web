@@ -706,7 +706,7 @@
           return mascotTex[k];
         }
         var camRight = new THREE.Vector3();
-        var MASCOT_W = 0.5;
+        var MASCOT_W = 0.36;
         var WANDER_R = 0.16; // walking radius around the branch point (world units)
         var mascotLast = 0;
         var MASCOT_H = MASCOT_W * 1.625;
@@ -878,8 +878,47 @@
         }
 
         var hubMesh = null;
-        var hubGeom = new THREE.OctahedronGeometry(0.42, 0);
-        var hubMat = new THREE.MeshLambertMaterial({ color: pal.hub, emissive: pal.hub, emissiveIntensity: 0.55 });
+        // Hub = a spinning coin with the head-office HL monogram on both faces.
+        function coinFaceTexture(mirror) {
+          var cv = document.createElement('canvas');
+          cv.width = 256;
+          cv.height = 256;
+          var g = cv.getContext('2d');
+          var navy = '#2b3a8f';
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.arc(128, 128, 126, 0, Math.PI * 2);
+          g.fill();
+          g.strokeStyle = navy;
+          g.lineWidth = 14;
+          g.beginPath();
+          g.arc(128, 128, 112, 0, Math.PI * 2);
+          g.stroke();
+          if (mirror) {
+            g.translate(256, 0);
+            g.scale(-1, 1);
+          }
+          g.fillStyle = navy;
+          g.font = 'bold 120px sans-serif';
+          g.textAlign = 'center';
+          g.textBaseline = 'middle';
+          g.fillText('HL', 128, 136);
+          var t = new THREE.CanvasTexture(cv);
+          t.colorSpace = THREE.SRGBColorSpace;
+          // cylinder cap UVs run sideways once the coin is stood up
+          t.center.set(0.5, 0.5);
+          t.rotation = mirror ? -Math.PI / 2 : Math.PI / 2;
+          return t;
+        }
+        var hubGeom = new THREE.CylinderGeometry(0.62, 0.62, 0.1, 48);
+        hubGeom.rotateX(Math.PI / 2); // stand the coin up; faces look along Z
+        var hubFront = coinFaceTexture(false);
+        var hubBack = coinFaceTexture(true);
+        var hubMat = [
+          new THREE.MeshLambertMaterial({ color: 0xd4af37, emissive: 0x6b5410, emissiveIntensity: 0.4 }), // rim
+          new THREE.MeshBasicMaterial({ map: hubFront }),
+          new THREE.MeshBasicMaterial({ map: hubBack })
+        ];
 
         // One arc per mapped branch into the hub; light particles travel along healthy links only.
         function buildFlows(collectorOk) {
@@ -1166,7 +1205,7 @@
             pr.material.opacity = (1 - phase) * 0.82;
           }
 
-          if (hubMesh) hubMesh.rotation.y = elapsed * 0.4;
+          if (hubMesh) hubMesh.rotation.y = elapsed * 0.55;
           var ts = now / 1000;
           camRight.setFromMatrixColumn(camera.matrixWorld, 0);
           var mdt = mascotLast ? Math.min(0.05, (now - mascotLast) / 1000) : 0;
@@ -1263,7 +1302,9 @@
           if (selRingGeom) selRingGeom.dispose();
           if (selRingMat) selRingMat.dispose();
           hubGeom.dispose();
-          hubMat.dispose();
+          hubMat.forEach(function (m) { m.dispose(); });
+          hubFront.dispose();
+          hubBack.dispose();
           mascots.forEach(function (m) { m.material.dispose(); });
           Object.keys(mascotTex).forEach(function (k) { mascotTex[k].dispose(); });
           try {
