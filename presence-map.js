@@ -259,7 +259,7 @@
 
   // Original "pill buddy" mascot drawn on canvas: capsule body in the status colour, anime eyes,
   // one face per status. Four shared textures, reused by every branch sprite.
-  function makeMascotTexture(THREE, status, colorHex) {
+  function makeMascotTexture(THREE, status, colorHex, frame) {
     var cv = document.createElement('canvas');
     cv.width = 128;
     cv.height = 160;
@@ -269,7 +269,16 @@
 
     g.fillStyle = 'rgba(0,0,0,0.18)';
     g.beginPath();
-    g.ellipse(64, 152, 34, 6, 0, 0, Math.PI * 2);
+    g.ellipse(64, 154, 34, 6, 0, 0, Math.PI * 2);
+    g.fill();
+
+    // feet: alternate between frames 'a' and 'b' to read as walking
+    var walking = status === 'ok' || status === 'partial';
+    var lift = walking ? (frame === 'a' ? [-5, 0] : frame === 'b' ? [0, -5] : [0, 0]) : [0, 0];
+    g.fillStyle = '#22303c';
+    g.beginPath();
+    g.ellipse(48, 152 + lift[0], 11, 6, 0, 0, Math.PI * 2);
+    g.ellipse(80, 152 + lift[1], 11, 6, 0, 0, Math.PI * 2);
     g.fill();
 
     function capsule() {
@@ -322,9 +331,14 @@
     g.lineWidth = 3.5;
     g.strokeStyle = ink;
 
+    function shut(x, y) {
+      g.beginPath();
+      g.arc(x, y, 7, Math.PI * 1.1, Math.PI * 1.9);
+      g.stroke();
+    }
+    var blinking = frame === 'blink';
     if (status === 'ok') {
-      eye(48, 70);
-      eye(80, 70);
+      if (blinking) { shut(48, 72); shut(80, 72); } else { eye(48, 70); eye(80, 70); }
       blush();
       g.fillStyle = '#e8577a';
       g.beginPath();
@@ -333,8 +347,7 @@
       g.fill();
       g.stroke();
     } else if (status === 'partial') {
-      eye(48, 72);
-      eye(80, 72);
+      if (blinking) { shut(48, 74); shut(80, 74); } else { eye(48, 72); eye(80, 72); }
       blush();
       g.beginPath();
       g.moveTo(38, 56); g.lineTo(54, 60);
@@ -539,12 +552,18 @@
         var pickMeshes = [];
         var pulseRings = [];
         var mascots = [];
-        var mascotMats = {};
+        var mascotTex = {};
         ['ok', 'partial', 'silent', 'none'].forEach(function (st) {
           var hex = st === 'none' ? pal.stale : pal[st];
-          mascotMats[st] = new THREE.SpriteMaterial({ map: makeMascotTexture(THREE, st, hex), transparent: true });
+          mascotTex[st] = {
+            a: makeMascotTexture(THREE, st, hex, 'a'),
+            b: makeMascotTexture(THREE, st, hex, 'b'),
+            blink: makeMascotTexture(THREE, st, hex, 'blink')
+          };
         });
         var MASCOT_W = 0.5;
+        var WANDER_R = 0.16; // walking radius around the branch point (world units)
+        var mascotLast = 0;
         var MASCOT_H = MASCOT_W * 1.25;
         var flowState = null; // { points, particles: [{ curve, t, speed, status }] }
         var HUB_Y = 3.4;
@@ -568,7 +587,11 @@
         function rebuildMarkers(data) {
           currentData = data || { collector_ok: true, sites: [] };
           clearGroup(markersGroup);
-          while (mascotGroup.children.length) mascotGroup.remove(mascotGroup.children[0]);
+          while (mascotGroup.children.length) {
+            var oldSprite = mascotGroup.children[0];
+            mascotGroup.remove(oldSprite);
+            oldSprite.material.dispose();
+          }
           pickMeshes = [];
           pulseRings = [];
           mascots = [];
@@ -631,14 +654,21 @@
             markersGroup.add(mesh);
             pickMeshes.push(mesh);
 
-            // Sprite material is shared, so clearGroup must not dispose it: keep it out of markersGroup disposal.
-            var sprite = new THREE.Sprite(mascotMats[status]);
+            // Textures are shared across sprites; each sprite owns its material so it can swap walk frames.
+            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: mascotTex[status].a, transparent: true }));
             sprite.center.set(0.5, 0);
             sprite.scale.set(MASCOT_W, MASCOT_H, 1);
             sprite.position.set(item.x, pillarH + 0.02, item.z);
             sprite.userData = mesh.userData;
             sprite.userData.baseY = pillarH + 0.02;
             sprite.userData.phase = i * 0.61;
+            sprite.userData.walk = {
+              ox: 0, oz: 0, tx: 0, tz: 0,
+              wait: (i % 5) * 0.4,
+              step: 0,
+              blinkAt: 1 + (i % 7) * 0.5,
+              blinkUntil: 0
+            };
             mascotGroup.add(sprite);
             pickMeshes.push(sprite);
             mascots.push(sprite);
@@ -989,23 +1019,50 @@
 
           if (hubMesh) hubMesh.rotation.y = elapsed * 0.4;
           var ts = now / 1000;
+          var mdt = mascotLast ? Math.min(0.05, (now - mascotLast) / 1000) : 0;
+          mascotLast = now;
           for (var mi = 0; mi < mascots.length; mi++) {
             var ms = mascots[mi];
             var md = ms.userData;
-            var ph = md.phase;
-            if (md.status === 'ok') {
-              ms.position.y = md.baseY + Math.abs(Math.sin(ts * 3 + ph)) * 0.12;
-              ms.material.rotation = 0;
-            } else if (md.status === 'partial') {
-              ms.position.y = md.baseY;
-              ms.material.rotation = 0;
-              ms.position.x = md.wx + Math.sin(ts * 2 + ph) * 0.04;
+            var w = md.walk;
+            var tex = mascotTex[md.status];
+            if (md.status === 'ok' || md.status === 'partial') {
+              var spd = md.status === 'ok' ? 0.16 : 0.07;
+              var dx = w.tx - w.ox;
+              var dz = w.tz - w.oz;
+              var d = Math.sqrt(dx * dx + dz * dz);
+              var moving = false;
+              if (w.wait > 0) {
+                w.wait -= mdt;
+              } else if (d < 0.01) {
+                // arrived: rest, then pick a new spot within the branch's small yard
+                w.wait = (md.status === 'ok' ? 0.6 : 1.8) + Math.random() * 1.6;
+                var ang = Math.random() * Math.PI * 2;
+                var rad = 0.05 + Math.random() * WANDER_R;
+                w.tx = Math.cos(ang) * rad;
+                w.tz = Math.sin(ang) * rad;
+              } else {
+                var stepLen = Math.min(d, spd * mdt);
+                w.ox += (dx / d) * stepLen;
+                w.oz += (dz / d) * stepLen;
+                moving = true;
+              }
+              w.step += moving ? mdt * (md.status === 'ok' ? 7 : 4) : 0;
+              if (ts > w.blinkAt) {
+                w.blinkUntil = ts + 0.14;
+                w.blinkAt = ts + 2.5 + Math.random() * 3;
+              }
+              var frame = ts < w.blinkUntil ? tex.blink : moving ? (Math.floor(w.step) % 2 ? tex.b : tex.a) : tex.a;
+              if (ms.material.map !== frame) ms.material.map = frame;
+              ms.position.x = md.wx + w.ox;
+              ms.position.z = md.wz + w.oz;
+              ms.position.y = md.baseY + (moving ? Math.abs(Math.sin(w.step * Math.PI)) * 0.03 : 0);
             } else if (md.status === 'silent') {
               ms.position.y = md.baseY;
-              ms.position.x = md.wx + Math.sin(ts * 22 + ph) * 0.018;
+              ms.position.x = md.wx + Math.sin(ts * 22 + md.phase) * 0.018;
             } else {
               ms.position.y = md.baseY;
-              ms.scale.y = MASCOT_H * (1 + Math.sin(ts * 1.3 + ph) * 0.04);
+              ms.scale.y = MASCOT_H * (1 + Math.sin(ts * 1.3 + md.phase) * 0.04);
             }
           }
           if (flowState) {
@@ -1046,9 +1103,11 @@
           if (selRingMat) selRingMat.dispose();
           hubGeom.dispose();
           hubMat.dispose();
-          Object.keys(mascotMats).forEach(function (k) {
-            mascotMats[k].map.dispose();
-            mascotMats[k].dispose();
+          mascots.forEach(function (m) { m.material.dispose(); });
+          Object.keys(mascotTex).forEach(function (k) {
+            mascotTex[k].a.dispose();
+            mascotTex[k].b.dispose();
+            mascotTex[k].blink.dispose();
           });
           try {
             renderer.dispose();
