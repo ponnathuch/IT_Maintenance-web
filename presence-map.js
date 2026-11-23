@@ -257,55 +257,101 @@
     return group;
   }
 
-  // Original "pill buddy" mascot drawn on canvas: capsule body in the status colour, anime eyes,
-  // one face per status. Four shared textures, reused by every branch sprite.
-  function makeMascotTexture(THREE, status, colorHex, frame) {
+  // Brand colours from the company's own logos (iCare, Super Drug, Pharmax, head office).
+  var BRANDS = {
+    icare: { top: '#ffffff', bottom: '#f4862a', ink: '#2a317c' },
+    sd: { top: '#ffffff', bottom: '#0c8049', ink: '#0c5a35' },
+    pm: { top: '#ffffff', bottom: '#174a8f', ink: '#143a6e' },
+    hq: { top: '#ffffff', bottom: '#2b3a8f', ink: '#1e2a6b' },
+    other: { top: '#ffffff', bottom: '#5b8aa6', ink: '#22303c' }
+  };
+
+  function brandOf(site) {
+    var code = String((site && site.code) || '').toUpperCase();
+    var b = String((site && site.brand) || '').toUpperCase();
+    if (code.indexOf('IC') === 0 || b === 'ICARE') return 'icare';
+    if (code.indexOf('SD') === 0 || b === 'SUPER DRUG') return 'sd';
+    if (code.indexOf('PM') === 0 || b === 'PHARMAX') return 'pm';
+    if (code.indexOf('HQ') === 0 || b === 'HQ') return 'hq';
+    return 'other';
+  }
+
+  // Original "pill buddy" mascot drawn on canvas: capsule in brand colours, anime face per status,
+  // walk frames 'a'/'b' and a 'blink' frame. Status also shows as a badge above the head.
+  function makeMascotTexture(THREE, status, brand, frame) {
+    var B = BRANDS[brand] || BRANDS.other;
     var cv = document.createElement('canvas');
     cv.width = 128;
-    cv.height = 160;
+    cv.height = 168;
     var g = cv.getContext('2d');
-    var col = '#' + colorHex.toString(16).padStart(6, '0');
-    var ink = '#22303c';
+    var ink = B.ink;
+    var OY = 8; // body offset so brand marks fit above the head
 
     g.fillStyle = 'rgba(0,0,0,0.18)';
     g.beginPath();
-    g.ellipse(64, 154, 34, 6, 0, 0, Math.PI * 2);
+    g.ellipse(64, 160, 34, 6, 0, 0, Math.PI * 2);
     g.fill();
 
-    // feet: alternate between frames 'a' and 'b' to read as walking
     var walking = status === 'ok' || status === 'partial';
     var lift = walking ? (frame === 'a' ? [-5, 0] : frame === 'b' ? [0, -5] : [0, 0]) : [0, 0];
-    g.fillStyle = '#22303c';
+    g.fillStyle = ink;
     g.beginPath();
-    g.ellipse(48, 152 + lift[0], 11, 6, 0, 0, Math.PI * 2);
-    g.ellipse(80, 152 + lift[1], 11, 6, 0, 0, Math.PI * 2);
+    g.ellipse(48, 158 + lift[0], 11, 6, 0, 0, Math.PI * 2);
+    g.ellipse(80, 158 + lift[1], 11, 6, 0, 0, Math.PI * 2);
     g.fill();
 
     function capsule() {
       g.beginPath();
-      g.moveTo(24, 70);
-      g.arc(64, 70, 40, Math.PI, 0);
-      g.lineTo(104, 110);
-      g.arc(64, 110, 40, 0, Math.PI);
+      g.moveTo(24, 70 + OY);
+      g.arc(64, 70 + OY, 40, Math.PI, 0);
+      g.lineTo(104, 110 + OY);
+      g.arc(64, 110 + OY, 40, 0, Math.PI);
       g.closePath();
     }
     g.save();
     capsule();
     g.clip();
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, 128, 96);
-    g.fillStyle = col;
-    g.fillRect(0, 96, 128, 70);
+    g.fillStyle = B.top;
+    g.fillRect(0, 0, 128, 96 + OY);
+    g.fillStyle = B.bottom;
+    g.fillRect(0, 96 + OY, 128, 80);
     g.restore();
     g.lineWidth = 4;
     g.strokeStyle = ink;
     capsule();
     g.stroke();
 
-    // pharmacy cross on the lower half
-    g.fillStyle = 'rgba(255,255,255,0.92)';
-    g.fillRect(58, 108, 12, 30);
-    g.fillRect(49, 117, 30, 12);
+    // brand marks
+    if (brand === 'icare') {
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(64, 18, 14, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = B.bottom;
+      g.beginPath();
+      g.arc(64, 18, 11, 0, Math.PI * 2);
+      g.fill();
+    } else if (brand === 'pm') {
+      var leaf = function (cx, cy, rot, col) {
+        g.save();
+        g.translate(cx, cy);
+        g.rotate(rot);
+        g.fillStyle = col;
+        g.beginPath();
+        g.ellipse(0, 0, 6, 11, 0, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      };
+      leaf(52, 26, -0.7, '#04ae8a');
+      leaf(64, 20, 0, '#f28290');
+      leaf(76, 26, 0.7, '#feb514');
+    } else if (brand === 'sd' || brand === 'hq') {
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 30px sans-serif';
+      g.textAlign = 'center';
+      g.fillText(brand === 'sd' ? 'S' : 'H', 64, 140 + OY);
+      g.textAlign = 'start';
+    }
 
     function eye(x, y) {
       g.fillStyle = ink;
@@ -320,70 +366,87 @@
       g.arc(x + 3, y + 4, 1.6, 0, Math.PI * 2);
       g.fill();
     }
-    function blush() {
-      g.fillStyle = 'rgba(255,120,150,0.45)';
-      g.beginPath();
-      g.ellipse(36, 88, 8, 4, 0, 0, Math.PI * 2);
-      g.ellipse(92, 88, 8, 4, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.lineCap = 'round';
-    g.lineWidth = 3.5;
-    g.strokeStyle = ink;
-
     function shut(x, y) {
       g.beginPath();
       g.arc(x, y, 7, Math.PI * 1.1, Math.PI * 1.9);
       g.stroke();
     }
+    function blush() {
+      g.fillStyle = 'rgba(255,120,150,0.45)';
+      g.beginPath();
+      g.ellipse(36, 88 + OY, 8, 4, 0, 0, Math.PI * 2);
+      g.ellipse(92, 88 + OY, 8, 4, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    function badge(col) {
+      g.fillStyle = col;
+      g.beginPath();
+      g.arc(106, 40, 14, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 3;
+      g.stroke();
+      g.fillStyle = '#ffffff';
+      g.font = 'bold 20px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('!', 106, 47);
+      g.textAlign = 'start';
+    }
+    g.lineCap = 'round';
+    g.lineWidth = 3.5;
+    g.strokeStyle = ink;
     var blinking = frame === 'blink';
+    var ey = 70 + OY;
+
     if (status === 'ok') {
-      if (blinking) { shut(48, 72); shut(80, 72); } else { eye(48, 70); eye(80, 70); }
+      if (blinking) { shut(48, ey + 2); shut(80, ey + 2); } else { eye(48, ey); eye(80, ey); }
       blush();
       g.fillStyle = '#e8577a';
       g.beginPath();
-      g.arc(64, 84, 8, 0, Math.PI);
+      g.arc(64, ey + 14, 8, 0, Math.PI);
       g.closePath();
       g.fill();
       g.stroke();
     } else if (status === 'partial') {
-      if (blinking) { shut(48, 74); shut(80, 74); } else { eye(48, 72); eye(80, 72); }
+      if (blinking) { shut(48, ey + 4); shut(80, ey + 4); } else { eye(48, ey + 2); eye(80, ey + 2); }
       blush();
       g.beginPath();
-      g.moveTo(38, 56); g.lineTo(54, 60);
-      g.moveTo(90, 56); g.lineTo(74, 60);
-      g.moveTo(54, 90); g.quadraticCurveTo(59, 85, 64, 90); g.quadraticCurveTo(69, 95, 74, 90);
+      g.moveTo(38, ey - 14); g.lineTo(54, ey - 10);
+      g.moveTo(90, ey - 14); g.lineTo(74, ey - 10);
+      g.moveTo(54, ey + 20); g.quadraticCurveTo(59, ey + 15, 64, ey + 20); g.quadraticCurveTo(69, ey + 25, 74, ey + 20);
       g.stroke();
       g.fillStyle = '#7cc8ff';
       g.beginPath();
-      g.moveTo(102, 44);
-      g.quadraticCurveTo(112, 60, 102, 64);
-      g.quadraticCurveTo(92, 60, 102, 44);
+      g.moveTo(24, ey - 22);
+      g.quadraticCurveTo(32, ey - 8, 24, ey - 4);
+      g.quadraticCurveTo(16, ey - 8, 24, ey - 22);
       g.fill();
+      badge('#f59e0b');
     } else if (status === 'silent') {
       g.beginPath();
-      g.moveTo(40, 64); g.lineTo(54, 72); g.lineTo(40, 80);
-      g.moveTo(88, 64); g.lineTo(74, 72); g.lineTo(88, 80);
+      g.moveTo(40, ey - 6); g.lineTo(54, ey + 2); g.lineTo(40, ey + 10);
+      g.moveTo(88, ey - 6); g.lineTo(74, ey + 2); g.lineTo(88, ey + 10);
       g.stroke();
       g.fillStyle = ink;
       g.beginPath();
-      g.ellipse(64, 90, 7, 6, 0, 0, Math.PI * 2);
+      g.ellipse(64, ey + 20, 7, 6, 0, 0, Math.PI * 2);
       g.fill();
       g.fillStyle = '#7cc8ff';
-      g.fillRect(42, 80, 5, 18);
-      g.fillRect(81, 80, 5, 18);
+      g.fillRect(42, ey + 10, 5, 18);
+      g.fillRect(81, ey + 10, 5, 18);
+      badge('#d92d20');
     } else {
       g.beginPath();
-      g.arc(48, 72, 7, 0, Math.PI);
-      g.moveTo(87, 72);
-      g.arc(80, 72, 7, 0, Math.PI);
-      g.moveTo(58, 88); g.lineTo(70, 88);
+      g.arc(48, ey + 2, 7, 0, Math.PI);
+      g.moveTo(87, ey + 2);
+      g.arc(80, ey + 2, 7, 0, Math.PI);
+      g.moveTo(58, ey + 18); g.lineTo(70, ey + 18);
       g.stroke();
       g.fillStyle = ink;
       g.font = 'bold 18px sans-serif';
-      g.fillText('z', 96, 40);
+      g.fillText('z', 98, 46);
       g.font = 'bold 13px sans-serif';
-      g.fillText('z', 110, 26);
+      g.fillText('z', 110, 32);
     }
 
     var tex = new THREE.CanvasTexture(cv);
@@ -433,7 +496,8 @@
       '<span><span class="p-dot online"></span> ปกติ</span>' +
       '<span><span class="p-dot" style="background:var(--c-warn)"></span> ดับบางเครื่อง</span>' +
       '<span><span class="p-dot" style="background:var(--c-err)"></span> ดับทั้งสาขา</span>' +
-      '<span><span class="p-dot unknown"></span> ไม่มีข้อมูล</span>';
+      '<span><span class="p-dot unknown"></span> ไม่มีข้อมูล</span>' +
+      '<span class="legend-note">สีฐาน = สถานะ · สีตัวการ์ตูน = แบรนด์</span>';
 
     var tooltip = document.createElement('div');
     tooltip.className = 'presence-map-tooltip';
@@ -552,19 +616,23 @@
         var pickMeshes = [];
         var pulseRings = [];
         var mascots = [];
+        // Textures built on demand per brand + status, shared by every sprite that needs them.
         var mascotTex = {};
-        ['ok', 'partial', 'silent', 'none'].forEach(function (st) {
-          var hex = st === 'none' ? pal.stale : pal[st];
-          mascotTex[st] = {
-            a: makeMascotTexture(THREE, st, hex, 'a'),
-            b: makeMascotTexture(THREE, st, hex, 'b'),
-            blink: makeMascotTexture(THREE, st, hex, 'blink')
-          };
-        });
+        function texFor(brand, status) {
+          var k = brand + '|' + status;
+          if (!mascotTex[k]) {
+            mascotTex[k] = {
+              a: makeMascotTexture(THREE, status, brand, 'a'),
+              b: makeMascotTexture(THREE, status, brand, 'b'),
+              blink: makeMascotTexture(THREE, status, brand, 'blink')
+            };
+          }
+          return mascotTex[k];
+        }
         var MASCOT_W = 0.5;
         var WANDER_R = 0.16; // walking radius around the branch point (world units)
         var mascotLast = 0;
-        var MASCOT_H = MASCOT_W * 1.25;
+        var MASCOT_H = MASCOT_W * 1.3125;
         var flowState = null; // { points, particles: [{ curve, t, speed, status }] }
         var HUB_Y = 3.4;
         var currentData = initialData || { collector_ok: true, sites: [] };
@@ -632,7 +700,7 @@
 
             // Equal low hex tokens: status is colour, not height, so nothing hides behind a tall neighbour.
             var pillarH = 0.1;
-            var radius = 0.22;
+            var radius = 0.27;
             var geom = new THREE.CylinderGeometry(radius, radius, pillarH, 6);
             var mat = new THREE.MeshLambertMaterial({
               color: colorHex,
@@ -655,13 +723,15 @@
             pickMeshes.push(mesh);
 
             // Textures are shared across sprites; each sprite owns its material so it can swap walk frames.
-            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: mascotTex[status].a, transparent: true }));
+            var brand = brandOf(s);
+            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texFor(brand, status).a, transparent: true }));
             sprite.center.set(0.5, 0);
             sprite.scale.set(MASCOT_W, MASCOT_H, 1);
             sprite.position.set(item.x, pillarH + 0.02, item.z);
             sprite.userData = mesh.userData;
             sprite.userData.baseY = pillarH + 0.02;
             sprite.userData.phase = i * 0.61;
+            sprite.userData.brand = brand;
             sprite.userData.walk = {
               ox: 0, oz: 0, tx: 0, tz: 0,
               wait: (i % 5) * 0.4,
@@ -1025,7 +1095,7 @@
             var ms = mascots[mi];
             var md = ms.userData;
             var w = md.walk;
-            var tex = mascotTex[md.status];
+            var tex = texFor(md.brand, md.status);
             if (md.status === 'ok' || md.status === 'partial') {
               var spd = md.status === 'ok' ? 0.16 : 0.07;
               var dx = w.tx - w.ox;

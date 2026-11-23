@@ -1642,3 +1642,4 @@ table.grid thead th.sticky-col {
   }
   .chk-btn[aria-pressed="false"] { display: none; }
 }
+.presence-map-legend .legend-note { opacity: 0.75; font-weight: 400; }
