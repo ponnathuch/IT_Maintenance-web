@@ -277,28 +277,52 @@
   }
 
   // Original "pill buddy" mascot drawn on canvas: capsule in brand colours, anime face per status,
-  // walk frames 'a'/'b' and a 'blink' frame. Status also shows as a badge above the head.
+  // frames w0..w3 (walk), idle, blink, wave. Status also shows as a badge above the head.
   function makeMascotTexture(THREE, status, brand, frame) {
     var B = BRANDS[brand] || BRANDS.other;
     var cv = document.createElement('canvas');
     cv.width = 128;
-    cv.height = 168;
+    cv.height = 208;
     var g = cv.getContext('2d');
     var ink = B.ink;
     var OY = 8; // body offset so brand marks fit above the head
 
     g.fillStyle = 'rgba(0,0,0,0.18)';
     g.beginPath();
-    g.ellipse(64, 160, 34, 6, 0, 0, Math.PI * 2);
+    g.ellipse(64, 200, 34, 6, 0, 0, Math.PI * 2);
     g.fill();
 
-    var walking = status === 'ok' || status === 'partial';
-    var lift = walking ? (frame === 'a' ? [-5, 0] : frame === 'b' ? [0, -5] : [0, 0]) : [0, 0];
-    g.fillStyle = ink;
-    g.beginPath();
-    g.ellipse(48, 158 + lift[0], 11, 6, 0, 0, Math.PI * 2);
-    g.ellipse(80, 158 + lift[1], 11, 6, 0, 0, Math.PI * 2);
-    g.fill();
+    // Walk cycle w0..w3 (side-on stride, faces right; the sprite is mirrored to walk left).
+    var STRIDE = { w0: 0.5, w1: 0, w2: -0.5, w3: 0 };
+    var stride = STRIDE[frame] !== undefined ? STRIDE[frame] : 0;
+    var seated = status === 'silent';
+    var LEG = 38;
+    function limb(x0, y0, ang, len, w) {
+      var x1 = x0 + Math.sin(ang) * len;
+      var y1 = y0 + Math.cos(ang) * len;
+      g.strokeStyle = ink;
+      g.lineCap = 'round';
+      g.lineWidth = w;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.lineTo(x1, y1);
+      g.stroke();
+      return [x1, y1];
+    }
+    function shoe(pt, dir) {
+      g.fillStyle = ink;
+      g.beginPath();
+      g.ellipse(pt[0] + dir * 4, pt[1] + 2, 10, 6, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (seated) {
+      // sitting on the ground, legs out front
+      shoe(limb(50, 152, 1.25, 26, 9), 1);
+      shoe(limb(78, 152, 1.25, 26, 9), 1);
+    } else {
+      shoe(limb(56, 150, stride, LEG, 9), 1);
+      shoe(limb(72, 150, -stride, LEG, 9), 1);
+    }
 
     function capsule() {
       g.beginPath();
@@ -320,6 +344,30 @@
     g.strokeStyle = ink;
     capsule();
     g.stroke();
+
+    // arms: swing against the legs while walking; wave when idle; hands on face when crying
+    function hand(pt) {
+      g.fillStyle = B.top;
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(pt[0], pt[1], 7, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    if (status === 'silent') {
+      hand(limb(26, 116, 2.5, 34, 8));
+      hand(limb(102, 116, -2.5, 34, 8));
+    } else if (status === 'partial') {
+      hand(limb(26, 116, 0.25 - stride * 0.8, 30, 8));
+      hand(limb(102, 116, -2.75, 52, 8));
+    } else if (frame === 'wave') {
+      hand(limb(26, 116, 0.25, 30, 8));
+      hand(limb(102, 116, -2.6, 32, 8));
+    } else {
+      hand(limb(26, 116, 0.25 - stride * 0.8, 30, 8));
+      hand(limb(102, 116, -0.25 - stride * 0.8, 30, 8));
+    }
 
     // brand marks
     if (brand === 'icare') {
@@ -617,22 +665,18 @@
         var pulseRings = [];
         var mascots = [];
         // Textures built on demand per brand + status, shared by every sprite that needs them.
+        // Frames: w0..w3 (walk), idle, blink, wave. Built lazily per brand + status + frame.
         var mascotTex = {};
-        function texFor(brand, status) {
-          var k = brand + '|' + status;
-          if (!mascotTex[k]) {
-            mascotTex[k] = {
-              a: makeMascotTexture(THREE, status, brand, 'a'),
-              b: makeMascotTexture(THREE, status, brand, 'b'),
-              blink: makeMascotTexture(THREE, status, brand, 'blink')
-            };
-          }
+        function texFor(brand, status, frame) {
+          var k = brand + '|' + status + '|' + frame;
+          if (!mascotTex[k]) mascotTex[k] = makeMascotTexture(THREE, status, brand, frame);
           return mascotTex[k];
         }
+        var camRight = new THREE.Vector3();
         var MASCOT_W = 0.5;
         var WANDER_R = 0.16; // walking radius around the branch point (world units)
         var mascotLast = 0;
-        var MASCOT_H = MASCOT_W * 1.3125;
+        var MASCOT_H = MASCOT_W * 1.625;
         var flowState = null; // { points, particles: [{ curve, t, speed, status }] }
         var HUB_Y = 3.4;
         var currentData = initialData || { collector_ok: true, sites: [] };
@@ -724,7 +768,7 @@
 
             // Textures are shared across sprites; each sprite owns its material so it can swap walk frames.
             var brand = brandOf(s);
-            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texFor(brand, status).a, transparent: true }));
+            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texFor(brand, status, 'idle'), transparent: true }));
             sprite.center.set(0.5, 0);
             sprite.scale.set(MASCOT_W, MASCOT_H, 1);
             sprite.position.set(item.x, pillarH + 0.02, item.z);
@@ -737,7 +781,9 @@
               wait: (i % 5) * 0.4,
               step: 0,
               blinkAt: 1 + (i % 7) * 0.5,
-              blinkUntil: 0
+              blinkUntil: 0,
+              waveUntil: 0,
+              dir: 1
             };
             mascotGroup.add(sprite);
             pickMeshes.push(sprite);
@@ -1089,13 +1135,13 @@
 
           if (hubMesh) hubMesh.rotation.y = elapsed * 0.4;
           var ts = now / 1000;
+          camRight.setFromMatrixColumn(camera.matrixWorld, 0);
           var mdt = mascotLast ? Math.min(0.05, (now - mascotLast) / 1000) : 0;
           mascotLast = now;
           for (var mi = 0; mi < mascots.length; mi++) {
             var ms = mascots[mi];
             var md = ms.userData;
             var w = md.walk;
-            var tex = texFor(md.brand, md.status);
             if (md.status === 'ok' || md.status === 'partial') {
               var spd = md.status === 'ok' ? 0.16 : 0.07;
               var dx = w.tx - w.ox;
@@ -1107,12 +1153,16 @@
               } else if (d < 0.01) {
                 // arrived: rest, then pick a new spot within the branch's small yard
                 w.wait = (md.status === 'ok' ? 0.6 : 1.8) + Math.random() * 1.6;
+                if (md.status === 'ok' && Math.random() < 0.3) w.waveUntil = ts + 1.2;
                 var ang = Math.random() * Math.PI * 2;
                 var rad = 0.05 + Math.random() * WANDER_R;
                 w.tx = Math.cos(ang) * rad;
                 w.tz = Math.sin(ang) * rad;
               } else {
                 var stepLen = Math.min(d, spd * mdt);
+                // face the way we walk, as seen on screen
+                var sx = dx * camRight.x + dz * camRight.z;
+                if (Math.abs(sx) > 1e-4) w.dir = sx > 0 ? 1 : -1;
                 w.ox += (dx / d) * stepLen;
                 w.oz += (dz / d) * stepLen;
                 moving = true;
@@ -1122,11 +1172,19 @@
                 w.blinkUntil = ts + 0.14;
                 w.blinkAt = ts + 2.5 + Math.random() * 3;
               }
-              var frame = ts < w.blinkUntil ? tex.blink : moving ? (Math.floor(w.step) % 2 ? tex.b : tex.a) : tex.a;
+              var fname = moving
+                ? 'w' + (Math.floor(w.step) % 4)
+                : ts < w.waveUntil ? (Math.floor(ts * 4) % 2 ? 'wave' : 'idle')
+                : ts < w.blinkUntil ? 'blink' : 'idle';
+              var frame = texFor(md.brand, md.status, fname);
               if (ms.material.map !== frame) ms.material.map = frame;
+              ms.scale.x = MASCOT_W * w.dir;
               ms.position.x = md.wx + w.ox;
               ms.position.z = md.wz + w.oz;
-              ms.position.y = md.baseY + (moving ? Math.abs(Math.sin(w.step * Math.PI)) * 0.03 : 0);
+              var bob = moving ? Math.abs(Math.sin(w.step * Math.PI / 2)) * 0.025 : 0;
+              if (md.status === 'partial' && moving) bob *= Math.floor(w.step) % 4 < 2 ? 1.8 : 0.3; // limp
+              ms.position.y = md.baseY + bob;
+              if (md.status === 'partial' && !moving) ms.scale.x = MASCOT_W * (Math.floor(ts / 0.9 + md.phase) % 2 ? 1 : -1); // look around
             } else if (md.status === 'silent') {
               ms.position.y = md.baseY;
               ms.position.x = md.wx + Math.sin(ts * 22 + md.phase) * 0.018;
@@ -1174,11 +1232,7 @@
           hubGeom.dispose();
           hubMat.dispose();
           mascots.forEach(function (m) { m.material.dispose(); });
-          Object.keys(mascotTex).forEach(function (k) {
-            mascotTex[k].a.dispose();
-            mascotTex[k].b.dispose();
-            mascotTex[k].blink.dispose();
-          });
+          Object.keys(mascotTex).forEach(function (k) { mascotTex[k].dispose(); });
           try {
             renderer.dispose();
             renderer.forceContextLoss();
