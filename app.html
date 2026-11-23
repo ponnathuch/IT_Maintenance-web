@@ -2415,7 +2415,7 @@
     var head = el('div', 'page-head');
     head.appendChild(el('h2', 'page-title', 'ตั้งค่าระบบ IT MA'));
     var seg = el('div', 'seg');
-    [['sites', 'สาขา (' + data.sites.length + ')'], ['ifaces', 'ผูก interface กับสาขา'], ['templates', 'แม่แบบเช็คลิสต์'], ['scoring', 'เกณฑ์คะแนน']].forEach(function (t) {
+    [['sites', 'สาขา (' + data.sites.length + ')'], ['ifaces', 'ผูก interface กับสาขา'], ['templates', 'แม่แบบเช็คลิสต์'], ['scoring', 'เกณฑ์คะแนน'], ['alerts', 'การแจ้งเตือน']].forEach(function (t) {
       var b = el('button', '', t[1]); b.type = 'button';
       b.setAttribute('aria-pressed', state.settingsTab === t[0] ? 'true' : 'false');
       b.addEventListener('click', function () { state.settingsTab = t[0]; renderSettings(data); });
@@ -2544,6 +2544,85 @@
       }));
       card.appendChild(act);
       v.appendChild(card);
+    } else if (state.settingsTab === 'alerts') {
+      var ac = data.alerts_config || { alert_collector_enabled: true, alert_collector_hours: '07:00-22:00', alert_site_enabled: false };
+      var hrsParts = String(ac.alert_collector_hours || '07:00-22:00').split('-');
+      var colEnabled = ac.alert_collector_enabled !== false;
+      var siteEnabled = Boolean(ac.alert_site_enabled);
+
+      var aCard = el('div', 'card');
+      aCard.appendChild(el('h3', 'item-title', 'การแจ้งเตือนผ่าน LINE 1:1 (Job Tracker Pull)'));
+      aCard.appendChild(el('p', 'page-sub', 'ระบบประเมินสถานะทุก 5 นาที และส่งแชท LINE 1:1 ให้ผู้รับที่กำหนดไว้'));
+
+      var fgA = el('div', 'form-grid two');
+      fgA.style.marginTop = '14px';
+
+      var fColSw = el('div', 'field');
+      fColSw.appendChild(el('span', 'lbl', 'ตัวรับ Log หยุด / กลับมาทำงาน'));
+      var colSwBtn = el('button', 'switch-pill');
+      colSwBtn.type = 'button';
+      colSwBtn.setAttribute('aria-pressed', colEnabled ? 'true' : 'false');
+      colSwBtn.appendChild(el('span', 'switch-knob'));
+      var colSwLbl = el('span', '', colEnabled ? 'เปิดแจ้งเตือน' : 'ปิดไว้');
+      colSwBtn.appendChild(colSwLbl);
+      colSwBtn.addEventListener('click', function () {
+        colEnabled = !colEnabled;
+        colSwBtn.setAttribute('aria-pressed', colEnabled ? 'true' : 'false');
+        colSwLbl.textContent = colEnabled ? 'เปิดแจ้งเตือน' : 'ปิดไว้';
+      });
+      fColSw.appendChild(colSwBtn);
+      fgA.appendChild(fColSw);
+
+      var fSiteSw = el('div', 'field');
+      fSiteSw.appendChild(el('span', 'lbl', 'สาขาหลุด / กลับมาออนไลน์ (เงียบในเวลาทำการเกิน 15 นาที)'));
+      var siteSwBtn = el('button', 'switch-pill');
+      siteSwBtn.type = 'button';
+      siteSwBtn.setAttribute('aria-pressed', siteEnabled ? 'true' : 'false');
+      siteSwBtn.appendChild(el('span', 'switch-knob'));
+      var siteSwLbl = el('span', '', siteEnabled ? 'เปิดแจ้งเตือนสาขา' : 'ปิดไว้ (ค่าเริ่มต้น)');
+      siteSwBtn.appendChild(siteSwLbl);
+      siteSwBtn.addEventListener('click', function () {
+        siteEnabled = !siteEnabled;
+        siteSwBtn.setAttribute('aria-pressed', siteEnabled ? 'true' : 'false');
+        siteSwLbl.textContent = siteEnabled ? 'เปิดแจ้งเตือนสาขา' : 'ปิดไว้ (ค่าเริ่มต้น)';
+      });
+      fSiteSw.appendChild(siteSwBtn);
+      fgA.appendChild(fSiteSw);
+
+      var fColOpen = el('label', 'field');
+      fColOpen.appendChild(el('span', 'lbl', 'เริ่มแจ้งเตือนตัวรับ Log (เวลาไทย)'));
+      var iColOpen = el('input', 'input');
+      iColOpen.type = 'time';
+      iColOpen.value = (hrsParts[0] || '07:00').slice(0, 5);
+      fColOpen.appendChild(iColOpen);
+      fgA.appendChild(fColOpen);
+
+      var fColClose = el('label', 'field');
+      fColClose.appendChild(el('span', 'lbl', 'สิ้นสุดแจ้งเตือนตัวรับ Log (เวลาไทย)'));
+      var iColClose = el('input', 'input');
+      iColClose.type = 'time';
+      iColClose.value = (hrsParts[1] || '22:00').slice(0, 5);
+      fColClose.appendChild(iColClose);
+      fgA.appendChild(fColClose);
+
+      aCard.appendChild(fgA);
+
+      var actA = el('div', 'row-actions');
+      actA.style.marginTop = '14px';
+      actA.appendChild(btn('บันทึกตั้งค่าการแจ้งเตือน', 'primary', function () {
+        var winStr = (iColOpen.value || '07:00') + '-' + (iColClose.value || '22:00');
+        api('alerts_settings_save', {
+          alert_collector_enabled: colEnabled,
+          alert_collector_hours: winStr,
+          alert_site_enabled: siteEnabled
+        }).then(function (res) {
+          data.alerts_config = res.alerts_config;
+          showMsg('บันทึกตั้งค่าการแจ้งเตือนเรียบร้อยแล้ว', 'ok');
+          renderSettings(data);
+        }).catch(function (e) { showMsg(e.message, 'err'); });
+      }));
+      aCard.appendChild(actA);
+      v.appendChild(aCard);
     }
   }
 
@@ -3192,6 +3271,26 @@
     }
 
     v.appendChild(renderProblemStrip(data));
+
+    if (Array.isArray(data.recent_alerts) && data.recent_alerts.length > 0) {
+      var alBox = el('section', 'card');
+      alBox.style.marginBottom = '12px';
+      var alHead = el('div', 'item-head');
+      alHead.appendChild(el('strong', '', 'ประวัติแจ้งเตือน 24 ชั่วโมงล่าสุด (' + data.recent_alerts.length + ')'));
+      alBox.appendChild(alHead);
+      var alRows = el('div', 'problem-rows');
+      alRows.style.marginTop = '8px';
+      data.recent_alerts.slice(0, 6).forEach(function (ev) {
+        var isDown = ev.kind === 'collector_down' || ev.kind === 'site_down';
+        var r = el('div', 'problem-row ' + (isDown ? 'is-silent' : 'is-partial'));
+        r.appendChild(el('span', 'badge ' + (isDown ? 'err' : 'ok'), bkkTimeHm(ev.at) + ' น.'));
+        r.appendChild(el('span', 'problem-name', ev.title + (ev.detail ? ' — ' + ev.detail : '')));
+        r.appendChild(el('span', 'badge ' + (ev.line_sent ? 'ok' : 'muted'), ev.line_sent ? 'ส่ง LINE แล้ว' : 'รอส่ง'));
+        alRows.appendChild(r);
+      });
+      alBox.appendChild(alRows);
+      v.appendChild(alBox);
+    }
 
     // KPI Row
     var kpiGrid = el('div', 'kpi-grid');
