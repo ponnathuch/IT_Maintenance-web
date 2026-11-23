@@ -266,6 +266,26 @@
     other: { top: '#ffffff', bottom: '#5b8aa6', ink: '#22303c' }
   };
 
+  // Eight looks so branches don't all share one face. Picked from the branch code, so a branch
+  // keeps the same character on every visit.
+  var LOOKS = [
+    { girl: false, style: 'short', hair: '#1f1a1c', skin: '#ffe3cf', eye: '#3b2a24', glasses: false },
+    { girl: true, style: 'bob', hair: '#4a2f27', skin: '#ffe3cf', eye: '#5a3a2a', glasses: false },
+    { girl: true, style: 'long', hair: '#7a4a2e', skin: '#ffe9d9', eye: '#4b6e3a', glasses: false },
+    { girl: false, style: 'spiky', hair: '#4a2f27', skin: '#f6d2b5', eye: '#3b2a24', glasses: true },
+    { girl: true, style: 'ponytail', hair: '#1f1a1c', skin: '#f6d2b5', eye: '#3b2a24', glasses: false },
+    { girl: false, style: 'side', hair: '#7a4a2e', skin: '#f0c9a8', eye: '#5a3a2a', glasses: false },
+    { girl: true, style: 'buns', hair: '#2b211f', skin: '#f0c9a8', eye: '#3b5a8f', glasses: true },
+    { girl: false, style: 'short', hair: '#5b3424', skin: '#f6d2b5', eye: '#3b2a24', glasses: true }
+  ];
+
+  function lookOf(site) {
+    var code = String((site && (site.code || site.site_id)) || '');
+    var h = 0;
+    for (var i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) >>> 0;
+    return h % LOOKS.length;
+  }
+
   function brandOf(site) {
     var code = String((site && site.code) || '').toUpperCase();
     var b = String((site && site.brand) || '').toUpperCase();
@@ -279,15 +299,18 @@
   // Original chibi pharmacy staff (about 2.3 heads tall), drawn on canvas. White coat with the
   // brand colour at the collar and shirt, brand hair clip, anime eyes, one pose per status.
   // Frames: w0..w3 (walk), idle, blink, wave. Status also shows as a badge above the head.
-  function makeMascotTexture(THREE, status, brand, frame) {
+  function makeMascotTexture(THREE, status, brand, frame, lookIdx) {
     var B = BRANDS[brand] || BRANDS.other;
+    var L = LOOKS[lookIdx] || LOOKS[0];
     var cv = document.createElement('canvas');
-    cv.width = 128;
-    cv.height = 208;
+    // drawn in a 128x208 design space, stored at 96x156 to keep GPU memory small
+    cv.width = 96;
+    cv.height = 156;
     var g = cv.getContext('2d');
+    g.scale(0.75, 0.75);
     var ink = '#2a2230';
-    var skin = '#ffe3cf';
-    var hair = '#4a2f27';
+    var skin = L.skin;
+    var hair = L.hair;
     var brandCol = B.bottom;
     var coat = brandCol; // shirt in the brand colour so brands read at a glance
     g.lineCap = 'round';
@@ -349,6 +372,18 @@
       leg(70, 160, -stride, 30);
     }
 
+    if (L.style === 'long') {
+      g.fillStyle = hair;
+      g.beginPath();
+      g.moveTo(20, 80 + dy);
+      g.lineTo(108, 80 + dy);
+      g.quadraticCurveTo(112, 130 + dy, 100, 150 + dy);
+      g.lineTo(28, 150 + dy);
+      g.quadraticCurveTo(16, 130 + dy, 20, 80 + dy);
+      g.closePath();
+      g.fill();
+    }
+
     // coat body
     g.fillStyle = coat;
     g.strokeStyle = ink;
@@ -385,10 +420,18 @@
       g.textAlign = 'start';
     }
 
-    // back hair (behind the head, gives the side locks)
-    dot(64, 70 + dy, 50, hair);
-    g.fillStyle = hair;
-    g.fillRect(16, 70 + dy, 96, 34);
+    // back hair: girls get side locks, boys a close crop
+    if (L.style === 'ponytail') {
+      g.fillStyle = hair;
+      g.beginPath();
+      g.ellipse(108, 64 + dy, 12, 26, 0.5, 0, Math.PI * 2);
+      g.fill();
+    }
+    dot(64, 70 + dy, L.girl ? 50 : 47, hair);
+    if (L.girl && L.style !== 'ponytail' && L.style !== 'buns') {
+      g.fillStyle = hair;
+      g.fillRect(16, 70 + dy, 96, 34);
+    }
 
     // head
     dot(64, 74 + dy, 44, skin, ink);
@@ -396,18 +439,49 @@
     // fringe
     g.fillStyle = hair;
     g.beginPath();
-    g.moveTo(18, 78 + dy);
-    g.arc(64, 72 + dy, 47, Math.PI * 1.02, Math.PI * 1.98);
-    g.lineTo(110, 78 + dy);
-    g.lineTo(98, 58 + dy);
-    g.lineTo(90, 70 + dy);
-    g.lineTo(78, 54 + dy);
-    g.lineTo(66, 68 + dy);
-    g.lineTo(54, 54 + dy);
-    g.lineTo(42, 70 + dy);
-    g.lineTo(32, 58 + dy);
+    if (L.style === 'side') {
+      // side part sweeping to the right
+      g.moveTo(20, 74 + dy);
+      g.arc(64, 72 + dy, 47, Math.PI * 1.04, Math.PI * 1.96);
+      g.lineTo(108, 72 + dy);
+      g.quadraticCurveTo(80, 52 + dy, 44, 66 + dy);
+      g.lineTo(36, 58 + dy);
+    } else if (L.style === 'short' || L.style === 'spiky') {
+      g.moveTo(20, 72 + dy);
+      g.arc(64, 72 + dy, 47, Math.PI * 1.04, Math.PI * 1.96);
+      g.lineTo(108, 72 + dy);
+      g.lineTo(96, 58 + dy);
+      g.lineTo(84, 64 + dy);
+      g.lineTo(72, 54 + dy);
+      g.lineTo(60, 62 + dy);
+      g.lineTo(48, 54 + dy);
+      g.lineTo(38, 62 + dy);
+      g.lineTo(30, 56 + dy);
+    } else {
+      g.moveTo(18, 78 + dy);
+      g.arc(64, 72 + dy, 47, Math.PI * 1.02, Math.PI * 1.98);
+      g.lineTo(110, 78 + dy);
+      g.lineTo(98, 58 + dy);
+      g.lineTo(90, 70 + dy);
+      g.lineTo(78, 54 + dy);
+      g.lineTo(66, 68 + dy);
+      g.lineTo(54, 54 + dy);
+      g.lineTo(42, 70 + dy);
+      g.lineTo(32, 58 + dy);
+    }
     g.closePath();
     g.fill();
+    if (L.style === 'spiky') {
+      g.beginPath();
+      g.moveTo(34, 40 + dy); g.lineTo(40, 14 + dy); g.lineTo(52, 32 + dy);
+      g.lineTo(62, 8 + dy); g.lineTo(72, 30 + dy); g.lineTo(86, 12 + dy);
+      g.lineTo(92, 36 + dy);
+      g.closePath();
+      g.fill();
+    } else if (L.style === 'buns') {
+      dot(30, 34 + dy, 13, hair);
+      dot(98, 34 + dy, 13, hair);
+    }
 
     // brand hair clip
     if (brand === 'icare') {
@@ -438,12 +512,17 @@
       g.beginPath();
       g.ellipse(x, ey, 8.5, 12, 0, 0, Math.PI * 2);
       g.fill();
-      g.fillStyle = B.ink === '#22303c' ? '#3b6e8f' : B.ink;
+      g.fillStyle = L.eye;
       g.beginPath();
       g.ellipse(x, ey + 3, 6, 7.5, 0, 0, Math.PI * 2);
       g.fill();
       dot(x - 3, ey - 5, 3.2, '#ffffff');
       dot(x + 3, ey + 5, 1.5, '#ffffff');
+      if (L.girl) {
+        var side = x < 64 ? -1 : 1;
+        line(x + side * 7, ey - 9, x + side * 12, ey - 13, 2.2, ink);
+        line(x + side * 8, ey - 5, x + side * 13, ey - 7, 2.2, ink);
+      }
     }
     function shut(x) {
       g.strokeStyle = ink;
@@ -513,6 +592,18 @@
       g.fillText('z', 100, 34 + dy);
       g.font = 'bold 12px sans-serif';
       g.fillText('z', 112, 22 + dy);
+    }
+
+    if (L.glasses && status !== 'silent') {
+      g.strokeStyle = ink;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.arc(48, ey + 1, 12, 0, Math.PI * 2);
+      g.moveTo(92, ey + 1);
+      g.arc(80, ey + 1, 12, 0, Math.PI * 2);
+      g.moveTo(60, ey);
+      g.lineTo(68, ey);
+      g.stroke();
     }
 
     // arms last so hands sit in front of the body and face
@@ -702,9 +793,9 @@
         // Textures built on demand per brand + status, shared by every sprite that needs them.
         // Frames: w0..w3 (walk), idle, blink, wave. Built lazily per brand + status + frame.
         var mascotTex = {};
-        function texFor(brand, status, frame) {
-          var k = brand + '|' + status + '|' + frame;
-          if (!mascotTex[k]) mascotTex[k] = makeMascotTexture(THREE, status, brand, frame);
+        function texFor(brand, status, frame, look) {
+          var k = brand + '|' + status + '|' + frame + '|' + look;
+          if (!mascotTex[k]) mascotTex[k] = makeMascotTexture(THREE, status, brand, frame, look);
           return mascotTex[k];
         }
         var camRight = new THREE.Vector3();
@@ -815,7 +906,7 @@
 
             // Textures are shared across sprites; each sprite owns its material so it can swap walk frames.
             var brand = brandOf(s);
-            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texFor(brand, status, 'idle'), transparent: true }));
+            var sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texFor(brand, status, 'idle', lookOf(s)), transparent: true }));
             sprite.center.set(0.5, 0);
             sprite.scale.set(MASCOT_W, MASCOT_H, 1);
             sprite.position.set(item.x, pillarH + 0.02, item.z);
@@ -823,6 +914,7 @@
             sprite.userData.baseY = pillarH + 0.02;
             sprite.userData.phase = i * 0.61;
             sprite.userData.brand = brand;
+            sprite.userData.look = lookOf(s);
             sprite.userData.walk = {
               ox: 0, oz: 0, tx: 0, tz: 0,
               wait: (i % 5) * 0.4,
@@ -1262,7 +1354,7 @@
                 ? 'w' + (Math.floor(w.step) % 4)
                 : ts < w.waveUntil ? (Math.floor(ts * 4) % 2 ? 'wave' : 'idle')
                 : ts < w.blinkUntil ? 'blink' : 'idle';
-              var frame = texFor(md.brand, md.status, fname);
+              var frame = texFor(md.brand, md.status, fname, md.look);
               if (ms.material.map !== frame) ms.material.map = frame;
               ms.scale.x = MASCOT_W * w.dir;
               ms.position.x = md.wx + w.ox;
