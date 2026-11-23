@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261122b">
+<link rel="stylesheet" href="itm-theme.css?v=20261123a">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -78,6 +78,7 @@
     missing_reason: 'กรุณาระบุเหตุผลการยกเลิก',
     missing_owner: 'กรุณาระบุผู้รับผิดชอบหลัก',
     missing_applies_to: 'กรุณาเลือกประเภทเครื่องอย่างน้อย 1 ประเภท',
+    bad_location: 'อ่านพิกัดไม่ได้ ใช้รูปแบบ 13.7563, 100.5018 หรือลิงก์ Google Maps แบบเต็ม',
     duplicate: 'มีข้อมูลซ้ำในระบบแล้ว',
     server: 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'
   };
@@ -98,6 +99,12 @@
     plansFilter: { kind: 'ALL', q: '' },
     settingsTab: 'sites',
     settingsTplKind: 'ONSITE',
+    presenceData: null,
+    presenceFilter: 'all', // 'all' | 'online' | 'offline'
+    presenceSearch: '',
+    presenceRandomMac: false,
+    presenceSelectedKey: null,
+    presenceViewMode: 'map', // 'map' | 'list'
     navSeq: 0
   };
 
@@ -122,7 +129,10 @@
     chevRight: '<polyline points="9 18 15 12 9 6"/>',
     arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
     copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
-    wifiOff: '<line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>'
+    wifiOff: '<line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
+    monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'
   };
 
   function icon(name, size) {
@@ -174,6 +184,29 @@
   function bkkToday() {
     var d = new Date(Date.now() + 7 * 3600 * 1000);
     return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+
+  function bkkTimeHm(iso) {
+    if (!iso) return '-';
+    var ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return '-';
+    var d = new Date(ms + 7 * 3600 * 1000);
+    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ' น.';
+  }
+
+  function thaiRelativeTime(iso, nowIso) {
+    if (!iso) return '-';
+    var t = Date.parse(iso);
+    var ref = nowIso ? Date.parse(nowIso) : Date.now();
+    if (!Number.isFinite(t) || !Number.isFinite(ref)) return '-';
+    var diffSec = Math.max(0, Math.round((ref - t) / 1000));
+    if (diffSec < 60) return 'เมื่อสักครู่';
+    var diffMin = Math.round(diffSec / 60);
+    if (diffMin < 60) return diffMin + ' นาทีที่แล้ว';
+    var diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return diffHr + ' ชั่วโมงที่แล้ว';
+    var diffDay = Math.round(diffHr / 24);
+    return diffDay + ' วันที่แล้ว';
   }
 
   function statusInfo(ev) {
@@ -797,6 +830,7 @@
   function navItems() {
     var items = [
       { key: 'overview', label: 'ภาพรวม', ic: 'grid' },
+      { key: 'devices', label: 'เครื่อง', ic: 'monitor' },
       { key: 'tasks', label: 'งานของฉัน', ic: 'tasks' },
       { key: 'issues', label: 'ปัญหาค้าง', ic: 'alert' },
       { key: 'scores', label: 'คะแนน', ic: 'award' }
@@ -867,6 +901,10 @@
   function goTab(key) {
     showMsg('');
     var prevTab = state.tab;
+    if (prevTab === 'devices' && key !== 'devices') {
+      stopPresenceAutoRefresh();
+      destroyPresenceMapInstance();
+    }
     var prevIdx = navIndexOf(prevTab);
     var nextIdx = navIndexOf(key);
     var dir = prevTab === key ? 0 : (nextIdx > prevIdx ? 1 : -1);
@@ -875,6 +913,7 @@
     renderNav(prevTab !== key);
     playWaterFlow(dir);
     if (key === 'overview') loadOverview();
+    else if (key === 'devices') loadPresence(false);
     else if (key === 'tasks') loadMyTasks();
     else if (key === 'issues') loadIssues();
     else if (key === 'scores') loadScores();
@@ -2372,7 +2411,7 @@
     var head = el('div', 'page-head');
     head.appendChild(el('h2', 'page-title', 'ตั้งค่าระบบ IT MA'));
     var seg = el('div', 'seg');
-    [['sites', 'สาขา (' + data.sites.length + ')'], ['templates', 'แม่แบบเช็คลิสต์'], ['scoring', 'เกณฑ์คะแนน']].forEach(function (t) {
+    [['sites', 'สาขา (' + data.sites.length + ')'], ['ifaces', 'ผูก interface กับสาขา'], ['templates', 'แม่แบบเช็คลิสต์'], ['scoring', 'เกณฑ์คะแนน']].forEach(function (t) {
       var b = el('button', '', t[1]); b.type = 'button';
       b.setAttribute('aria-pressed', state.settingsTab === t[0] ? 'true' : 'false');
       b.addEventListener('click', function () { state.settingsTab = t[0]; renderSettings(data); });
@@ -2396,13 +2435,15 @@
         });
         var wrap = el('div', 'table-wrap');
         var tbl = el('table', 'grid');
-        tbl.innerHTML = '<thead><tr><th class="sticky-col">รหัส</th><th>ชื่อสาขา</th><th>แบรนด์</th><th>สถานะ</th><th>จัดการ</th></tr></thead>';
+        tbl.innerHTML = '<thead><tr><th class="sticky-col">รหัส</th><th>ชื่อสาขา</th><th>แบรนด์</th><th>พิกัดแผนที่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>';
         var tbody = el('tbody');
         list.forEach(function (s) {
           var tr = el('tr');
           tr.appendChild(el('td', 'sticky-col site-code', s.code));
           tr.appendChild(el('td', '', s.name));
           tr.appendChild(el('td', '', s.brand || '-'));
+          var hasCoord = s.lat !== null && s.lat !== undefined && s.lng !== null && s.lng !== undefined;
+          tr.appendChild(el('td', 'dev-mono', hasCoord ? Number(s.lat).toFixed(4) + ', ' + Number(s.lng).toFixed(4) : 'ยังไม่ระบุ'));
           var tdSt = el('td'); tdSt.appendChild(el('span', 'badge ' + (s.active ? 'ok' : 'muted'), s.active ? 'เปิดใช้งาน' : 'ปิดสาขา')); tr.appendChild(tdSt);
           var tdA = el('td'); tdA.appendChild(btn('แก้ไข', 'sm', function () { openSiteModal(s); })); tr.appendChild(tdA);
           tbody.appendChild(tr);
@@ -2411,6 +2452,8 @@
       };
       qInp.addEventListener('input', drawSites);
       drawSites();
+    } else if (state.settingsTab === 'ifaces') {
+      renderIfaceMappingSettings(v, data.sites);
     } else if (state.settingsTab === 'templates') {
       var tb2 = el('div', 'toolbar');
       var tSeg = el('div', 'seg');
@@ -2506,6 +2549,13 @@
       var fN = el('label', 'field'); fN.appendChild(el('span', 'lbl', 'ชื่อสาขา / สถานที่ *'));
       var iN = el('input', 'input'); iN.value = existing ? existing.name : ''; fN.appendChild(iN); body.appendChild(fN);
 
+      var fLoc = el('label', 'field'); fLoc.appendChild(el('span', 'lbl', 'ตำแหน่ง (พิกัดหรือลิงก์ Google Maps)'));
+      var iLoc = el('input', 'input');
+      iLoc.placeholder = 'เช่น 13.7563, 100.5018 หรือวางลิงก์ Google Maps แบบเต็ม';
+      var hasCoord = existing && existing.lat !== null && existing.lat !== undefined && existing.lng !== null && existing.lng !== undefined;
+      iLoc.value = hasCoord ? (existing.lat + ', ' + existing.lng) : '';
+      fLoc.appendChild(iLoc); body.appendChild(fLoc);
+
       var activeVal = existing ? existing.active : true;
       var fA = el('div', 'field'); fA.appendChild(el('span', 'lbl', 'สถานะสาขา'));
       var seg = el('div', 'seg');
@@ -2520,11 +2570,25 @@
       });
       fA.appendChild(seg); body.appendChild(fA);
 
+      var errEl = el('div', 'fielderr');
+      body.appendChild(errEl);
+
       var act = el('div', 'row-actions');
       act.appendChild(btn('บันทึกสาขา', 'primary', function () {
-        api('site_save', { id: existing ? existing.id : undefined, code: iC.value.trim(), name: iN.value.trim(), brand: iB.value.trim(), active: activeVal }).then(function () {
+        errEl.textContent = '';
+        api('site_save', {
+          id: existing ? existing.id : undefined,
+          code: iC.value.trim(),
+          name: iN.value.trim(),
+          brand: iB.value.trim(),
+          active: activeVal,
+          location: iLoc.value.trim()
+        }).then(function () {
           close(); showMsg('บันทึกข้อมูลสาขาเรียบร้อยแล้ว', 'ok'); loadSettings();
-        }).catch(function (e) { showMsg(e.message, 'err'); });
+        }).catch(function (e) {
+          errEl.textContent = e.message;
+          showMsg(e.message, 'err');
+        });
       }));
       body.appendChild(act);
     });
@@ -2626,6 +2690,706 @@
       body.appendChild(act);
     });
   }
+
+  function renderIfaceMappingSettings(host, sites) {
+    var box = el('div');
+    var intro = el('p', 'page-sub', 'เลือกสาขาให้กับแต่ละชื่อ tunnel (in_display_interface) ที่พบจาก Sophos หรือตั้งเป็น "ไม่สนใจ" สำหรับพอร์ตภายใน/WAN ที่ไม่ใช่สาขา');
+    intro.style.marginBottom = '12px';
+    box.appendChild(intro);
+    var listHost = el('div', 'card', 'กำลังโหลดรายการ interface...');
+    box.appendChild(listHost);
+    host.appendChild(box);
+
+    var siteOpts = [{ value: '', label: '— ยังไม่ผูกสาขา —' }].concat(
+      (sites || []).filter(function (s) { return s.active !== false; }).map(function (s) {
+        return { value: String(s.id), label: s.code + ' ' + s.name };
+      })
+    );
+
+    function reloadIfaces() {
+      api('iface_map_list', {}).then(function (res) {
+        listHost.className = '';
+        listHost.innerHTML = '';
+        var rows = res.ifaces || [];
+        if (!rows.length) {
+          var emp = el('div', 'empty-state');
+          emp.appendChild(el('h2', '', 'ยังไม่มี interface ที่ส่งมาจากตัวรับ log'));
+          emp.appendChild(el('p', '', 'เมื่อตัวรับ log เริ่มส่งข้อมูล ชื่อ interface จาก Sophos จะปรากฏที่นี่โดยอัตโนมัติ'));
+          listHost.appendChild(emp);
+          return;
+        }
+        var wrap = el('div', 'table-wrap');
+        var tbl = el('table', 'grid');
+        tbl.innerHTML = '<thead><tr><th class="sticky-col">ชื่อ Interface (Sophos)</th><th>จำนวนเครื่อง</th><th>ผูกกับสาขา</th><th>สถานะ</th></tr></thead>';
+        var tbody = el('tbody');
+        rows.forEach(function (row) {
+          var tr = el('tr');
+          tr.appendChild(el('td', 'sticky-col site-code', row.iface));
+          tr.appendChild(el('td', '', row.devices + ' เครื่อง'));
+
+          var tdSel = el('td');
+          var curSiteVal = row.site_id ? String(row.site_id) : '';
+          var sel = makeSelect(siteOpts, curSiteVal, function (nv) {
+            var nextSiteId = nv ? Number(nv) : null;
+            api('iface_map_save', { iface: row.iface, site_id: nextSiteId, ignored: false }).then(function () {
+              showMsg('บันทึกการผูก ' + row.iface + ' เรียบร้อยแล้ว', 'ok');
+              reloadIfaces();
+            }).catch(function (e) { showMsg(e.message, 'err'); });
+          }, 'เลือกสาขาของ ' + row.iface);
+          tdSel.appendChild(sel);
+          tr.appendChild(tdSel);
+
+          var tdIgn = el('td');
+          var ignBtn = el('button', 'switch-pill');
+          ignBtn.type = 'button';
+          ignBtn.setAttribute('aria-pressed', row.ignored ? 'true' : 'false');
+          ignBtn.appendChild(el('span', 'switch-knob'));
+          ignBtn.appendChild(el('span', '', row.ignored ? 'ไม่สนใจ' : 'แสดงผล'));
+          ignBtn.addEventListener('click', function () {
+            var nextIgn = !row.ignored;
+            api('iface_map_save', { iface: row.iface, site_id: nextIgn ? null : (row.site_id || null), ignored: nextIgn }).then(function () {
+              showMsg(nextIgn ? 'ซ่อน interface ' + row.iface + ' แล้ว' : 'เปิดแสดง interface ' + row.iface + ' แล้ว', 'ok');
+              reloadIfaces();
+            }).catch(function (e) { showMsg(e.message, 'err'); });
+          });
+          tdIgn.appendChild(ignBtn);
+          tr.appendChild(tdIgn);
+          tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody);
+        wrap.appendChild(tbl);
+        listHost.appendChild(wrap);
+      }).catch(function (e) {
+        listHost.textContent = e.message;
+      });
+    }
+
+    reloadIfaces();
+  }
+
+  // ---------------- Screen 8: Device Presence ("เครื่อง") + 3D Thailand Map ----------------
+  var presenceTimer = null;
+  var mapModulePromise = null;
+  var mapMountedHost = null;
+
+  function siteGroupKey(s) {
+    return s.site_id !== null && s.site_id !== undefined ? 'site:' + s.site_id : 'iface:' + s.code;
+  }
+
+  function startPresenceAutoRefresh() {
+    stopPresenceAutoRefresh();
+    presenceTimer = setInterval(function () {
+      if (state.tab === 'devices' && document.visibilityState === 'visible') {
+        loadPresence(true);
+      }
+    }, 60_000);
+  }
+
+  function stopPresenceAutoRefresh() {
+    if (presenceTimer) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+  }
+
+  function destroyPresenceMapInstance() {
+    if (window.ItmPresenceMap && typeof window.ItmPresenceMap.destroy === 'function') {
+      try { window.ItmPresenceMap.destroy(); } catch (_e) {}
+    }
+    mapMountedHost = null;
+  }
+
+  function ensurePresenceMapLoaded() {
+    if (window.ItmPresenceMap) return Promise.resolve(window.ItmPresenceMap);
+    if (mapModulePromise) return mapModulePromise;
+    mapModulePromise = new Promise(function (resolve) {
+      var s = document.createElement('script');
+      s.src = 'presence-map.js?v=20261123a';
+      s.onload = function () { resolve(window.ItmPresenceMap || null); };
+      s.onerror = function () { mapModulePromise = null; resolve(null); };
+      document.head.appendChild(s);
+    });
+    return mapModulePromise;
+  }
+
+  function loadPresence(silentRefresh) {
+    startPresenceAutoRefresh();
+    var seq = silentRefresh ? state.navSeq : ++state.navSeq;
+    var v = $('view');
+    if (!silentRefresh && !state.presenceData) {
+      v.setAttribute('aria-busy', 'true');
+      v.innerHTML = '<div class="card">กำลังโหลดสถานะเครื่องออนไลน์...</div>';
+    }
+    api('presence_overview', {}).then(function (data) {
+      if (seq !== state.navSeq || state.tab !== 'devices') return;
+      state.presenceData = data;
+      v.removeAttribute('aria-busy');
+      renderPresenceView(silentRefresh);
+    }).catch(function (e) {
+      if (seq !== state.navSeq || state.tab !== 'devices') return;
+      v.removeAttribute('aria-busy');
+      if (!silentRefresh) showMsg(e.message, 'err');
+    });
+  }
+
+  function computeFilteredSites(data) {
+    var showRand = state.presenceRandomMac;
+    var stFilter = state.presenceFilter; // 'all' | 'online' | 'offline'
+    var q = state.presenceSearch.trim().toLowerCase();
+    var collectorOk = Boolean(data.collector_ok);
+
+    var totalOnline = 0;
+    var totalDevices = 0;
+    var silentBranches = 0;
+    var outSites = [];
+
+    (data.sites || []).forEach(function (s) {
+      var visDevs = (s.devices || []).filter(function (d) {
+        if (!showRand && d.random_mac) return false;
+        return true;
+      });
+      var onlineCnt = 0;
+      visDevs.forEach(function (d) { if (d.online) onlineCnt++; });
+      var totalCnt = visDevs.length;
+
+      totalOnline += onlineCnt;
+      totalDevices += totalCnt;
+      var isSilent = collectorOk && totalCnt > 0 && onlineCnt === 0;
+      if (isSilent) silentBranches++;
+
+      // Filter devices by search and online/offline filter
+      var matchingDevs = visDevs.filter(function (d) {
+        if (stFilter === 'online' && (!collectorOk || !d.online)) return false;
+        if (stFilter === 'offline' && (!collectorOk || d.online)) return false;
+        if (q) {
+          var hay = (d.mac + ' ' + d.ip + ' ' + (d.label || '') + ' ' + (d.device_name || '') + ' ' + s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ')).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      var siteMatchesQuery = !q || (s.code + ' ' + s.name + ' ' + (s.ifaces || []).join(' ')).toLowerCase().indexOf(q) !== -1;
+      if (q && !matchingDevs.length && !siteMatchesQuery) return;
+      if (stFilter === 'online' && onlineCnt === 0 && !q) return;
+      if (stFilter === 'offline' && totalCnt > 0 && onlineCnt === totalCnt && !q) return;
+
+      outSites.push({
+        key: siteGroupKey(s),
+        site_id: s.site_id,
+        code: s.code,
+        name: s.name,
+        brand: s.brand,
+        lat: s.lat,
+        lng: s.lng,
+        ifaces: s.ifaces || [],
+        online: onlineCnt,
+        total: totalCnt,
+        isSilent: isSilent,
+        first_today: s.first_today,
+        devices: matchingDevs,
+        allDevices: visDevs,
+        site_devices: s.site_devices || []
+      });
+    });
+
+    // Sort: silent branches first, then branches with devices before empty ones, then by code
+    outSites.sort(function (a, b) {
+      if (a.isSilent !== b.isSilent) return a.isSilent ? -1 : 1;
+      var aHas = a.total > 0 ? 1 : 0;
+      var bHas = b.total > 0 ? 1 : 0;
+      if (aHas !== bHas) return bHas - aHas;
+      return String(a.code).localeCompare(String(b.code));
+    });
+
+    return {
+      collector_ok: collectorOk,
+      totalOnline: totalOnline,
+      totalDevices: totalDevices,
+      silentBranches: silentBranches,
+      unmappedCount: (data.unmapped_ifaces || []).length,
+      sites: outSites
+    };
+  }
+
+  function renderPresenceView(isSoftUpdate) {
+    var data = state.presenceData;
+    if (!data) return;
+    var summary = computeFilteredSites(data);
+
+    // If map is already mounted and this is a background refresh, update data in place
+    if (isSoftUpdate && mapMountedHost && window.ItmPresenceMap && state.presenceViewMode === 'map') {
+      window.ItmPresenceMap.update({
+        collector_ok: summary.collector_ok,
+        sites: summary.sites,
+        selectedKey: state.presenceSelectedKey
+      });
+    }
+
+    var v = $('view');
+    destroyPresenceMapInstance();
+    v.innerHTML = '';
+
+    // Page header
+    var head = el('div', 'page-head');
+    var hLeft = el('div');
+    hLeft.appendChild(el('h2', 'page-title', 'เครื่องออนไลน์รายสาขา'));
+    hLeft.appendChild(el('p', 'page-sub', 'สรุปจาก Sophos Firewall ทุก 60 วินาที · ออนไลน์เมื่อมีข้อมูลภายใน 10 นาที'));
+    head.appendChild(hLeft);
+
+    var hRight = el('div', 'row-actions');
+    var lastCol = (data.collectors || [])[0];
+    var colBadge = el(
+      'span',
+      'badge ' + (summary.collector_ok ? 'ok' : 'warn'),
+      summary.collector_ok
+        ? 'ตัวรับปกติ (' + (lastCol ? thaiRelativeTime(lastCol.last_push, data.now) : 'พร้อม') + ')'
+        : 'ไม่มีข้อมูลจากตัวรับเกิน 5 นาที'
+    );
+    hRight.appendChild(colBadge);
+
+    var modeSeg = el('div', 'seg');
+    modeSeg.setAttribute('role', 'group');
+    modeSeg.setAttribute('aria-label', 'สลับมุมมองแผนที่หรือรายการ');
+    [['map', 'แผนที่ 3 มิติ'], ['list', 'มุมมองรายการ']].forEach(function (m) {
+      var b = el('button', '', m[1]);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', state.presenceViewMode === m[0] ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.presenceViewMode = m[0];
+        renderPresenceView(false);
+      });
+      modeSeg.appendChild(b);
+    });
+    hRight.appendChild(modeSeg);
+    hRight.appendChild(btn('รีเฟรช', 'sm', function () { loadPresence(false); }, 'refresh'));
+    head.appendChild(hRight);
+    v.appendChild(head);
+
+    // Stale collector warning banner (spec 5 & 7.6: must never show all devices as offline)
+    if (!summary.collector_ok) {
+      var banner = el('div', 'collector-banner');
+      banner.setAttribute('role', 'alert');
+      banner.appendChild(icon('alert', 18));
+      banner.appendChild(el('span', '', 'ตัวรับ log ไม่ได้ส่งข้อมูลเกิน 5 นาที สถานะด้านล่างอาจไม่ล่าสุด (แสดงเป็น "ไม่มีข้อมูล")'));
+      v.appendChild(banner);
+    }
+
+    // KPI Row
+    var kpiGrid = el('div', 'kpi-grid');
+    var lead = el('div', 'kpi-lead');
+    var leadTop = el('div', 'kpi-lead-top');
+    var leadL = el('div');
+    leadL.appendChild(el('div', 'badge ' + (summary.collector_ok ? 'brand' : 'warn'), summary.collector_ok ? 'เครื่องออนไลน์ทั้งหมด' : 'สถานะเครื่องล่าสุด'));
+    leadL.appendChild(
+      el(
+        'div',
+        'kpi-num-big',
+        summary.collector_ok ? (summary.totalOnline + ' / ' + summary.totalDevices) : 'ไม่มีข้อมูล'
+      )
+    );
+    leadTop.appendChild(leadL);
+    var leadR = el('div');
+    leadR.style.textAlign = 'right';
+    var pct = summary.collector_ok && summary.totalDevices > 0 ? Math.round((summary.totalOnline / summary.totalDevices) * 100) : 0;
+    leadR.appendChild(el('div', '', summary.collector_ok ? ('ออนไลน์ ' + pct + '%') : ('เครื่องในระบบ ' + summary.totalDevices + ' เครื่อง')));
+    leadR.appendChild(el('div', 'page-sub', 'อัปเดต ' + bkkTimeHm(data.now)));
+    leadTop.appendChild(leadR);
+    lead.appendChild(leadTop);
+    var kBar = el('div', 'kpi-bar');
+    var kFill = el('span');
+    kFill.style.width = (summary.collector_ok ? pct : 0) + '%';
+    kBar.appendChild(kFill);
+    lead.appendChild(kBar);
+    kpiGrid.appendChild(lead);
+
+    var subGrid = el('div', 'kpi-sub-grid');
+    var mkKpi = function (lbl, val, tone, onClick) {
+      var box = el('div', 'kpi-mini' + (tone ? ' ' + tone : ''));
+      box.appendChild(el('div', 'k-lbl', lbl));
+      box.appendChild(el('div', 'k-val', val));
+      if (onClick) {
+        box.style.cursor = 'pointer';
+        box.addEventListener('click', onClick);
+      }
+      return box;
+    };
+    subGrid.appendChild(mkKpi('ออนไลน์ตอนนี้', summary.collector_ok ? String(summary.totalOnline) : 'ไม่มีข้อมูล', ''));
+    subGrid.appendChild(mkKpi('เครื่องทั้งหมด', String(summary.totalDevices), ''));
+    subGrid.appendChild(mkKpi('สาขาเงียบทั้งสาขา', summary.collector_ok ? String(summary.silentBranches) : '-', summary.silentBranches > 0 ? 'tone-err' : ''));
+    subGrid.appendChild(
+      mkKpi(
+        'interface ยังไม่ผูก',
+        String(summary.unmappedCount),
+        summary.unmappedCount > 0 ? 'tone-warn' : '',
+        state.sess && state.sess.isAdmin
+          ? function () { state.settingsTab = 'ifaces'; goTab('settings'); }
+          : null
+      )
+    );
+    kpiGrid.appendChild(subGrid);
+    v.appendChild(kpiGrid);
+
+    // Filter Toolbar: ทั้งหมด/ออนไลน์/ออฟไลน์ + สวิตช์ MAC สุ่ม + ช่องค้นหา
+    var tb = el('div', 'toolbar');
+    var fSeg = el('div', 'seg');
+    fSeg.setAttribute('role', 'group');
+    fSeg.setAttribute('aria-label', 'กรองสถานะเครื่อง');
+    [['all', 'ทั้งหมด'], ['online', 'ออนไลน์'], ['offline', 'ออฟไลน์']].forEach(function (f) {
+      var b = el('button', '', f[1]);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', state.presenceFilter === f[0] ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.presenceFilter = f[0];
+        renderPresenceView(false);
+      });
+      fSeg.appendChild(b);
+    });
+    tb.appendChild(fSeg);
+
+    var rndSwitch = el('button', 'switch-pill');
+    rndSwitch.type = 'button';
+    rndSwitch.setAttribute('aria-pressed', state.presenceRandomMac ? 'true' : 'false');
+    rndSwitch.appendChild(el('span', 'switch-knob'));
+    rndSwitch.appendChild(el('span', '', 'แสดงเครื่อง MAC สุ่ม'));
+    rndSwitch.addEventListener('click', function () {
+      state.presenceRandomMac = !state.presenceRandomMac;
+      renderPresenceView(false);
+    });
+    tb.appendChild(rndSwitch);
+
+    var sInp = el('input', 'input grow');
+    sInp.type = 'search';
+    sInp.placeholder = 'ค้นหา MAC, IP, ชื่อเล่น หรือสาขา...';
+    sInp.value = state.presenceSearch;
+    sInp.addEventListener('input', function () {
+      state.presenceSearch = sInp.value;
+      renderPresenceBody(bodyHost, DetailHost, computeFilteredSites(state.presenceData));
+    });
+    tb.appendChild(sInp);
+    v.appendChild(tb);
+
+    var DetailHost = el('div');
+    var bodyHost = el('div');
+    v.appendChild(bodyHost);
+    v.appendChild(DetailHost);
+
+    renderPresenceBody(bodyHost, DetailHost, summary);
+  }
+
+  function renderPresenceBody(host, detailHost, summary) {
+    destroyPresenceMapInstance();
+    host.innerHTML = '';
+    detailHost.innerHTML = '';
+
+    var selectSiteKey = function (key) {
+      state.presenceSelectedKey = key;
+      renderSelectedSiteDetail(detailHost, summary);
+      [].forEach.call(host.querySelectorAll('[data-site-key]'), function (node) {
+        if (node.getAttribute('data-site-key') === key) node.classList.add('is-selected');
+        else node.classList.remove('is-selected');
+      });
+      if (detailHost.firstChild && typeof detailHost.scrollIntoView === 'function') {
+        detailHost.scrollIntoView({ behavior: isReducedMotion() ? 'auto' : 'smooth', block: 'nearest' });
+      }
+    };
+
+    if (state.presenceViewMode === 'map') {
+      var mapWrap = el('div');
+      host.appendChild(mapWrap);
+      ensurePresenceMapLoaded().then(function (mapApi) {
+        if (state.tab !== 'devices' || state.presenceViewMode !== 'map') return;
+        if (!mapApi || typeof mapApi.supported !== 'function' || !mapApi.supported()) {
+          var note = el('div', 'msg');
+          note.textContent = isReducedMotion()
+            ? 'เปิดโหมดลดการเคลื่อนไหวอยู่ จึงแสดงมุมมองการ์ดสาขาแทนแผนที่ 3 มิติ'
+            : 'อุปกรณ์นี้ไม่รองรับ WebGL 3 มิติ จึงแสดงมุมมองการ์ดสาขาอัตโนมัติ';
+          mapWrap.appendChild(note);
+          renderBranchCardGrid(mapWrap, summary, selectSiteKey);
+          renderSelectedSiteDetail(detailHost, summary);
+          return;
+        }
+        render3DMapSection(mapWrap, summary, mapApi, selectSiteKey);
+        renderBranchCardGrid(host, summary, selectSiteKey);
+        renderSelectedSiteDetail(detailHost, summary);
+      });
+      return;
+    }
+
+    renderBranchCardGrid(host, summary, selectSiteKey);
+    renderSelectedSiteDetail(detailHost, summary);
+  }
+
+  function render3DMapSection(container, summary, mapApi, onSelectSite) {
+    container.innerHTML = '';
+    var layout = el('div', 'presence-map-layout');
+    var stage = el('div', 'presence-map-stage');
+    var canvasHost = el('div', 'presence-map-canvas-host');
+    stage.appendChild(canvasHost);
+    layout.appendChild(stage);
+
+    var side = el('div', 'presence-side-panel');
+    var noCoords = summary.sites.filter(function (s) {
+      return s.lat === null || s.lat === undefined || s.lng === null || s.lng === undefined;
+    });
+    var sideHead = el('div', 'item-head');
+    sideHead.appendChild(el('strong', '', 'ยังไม่ระบุตำแหน่ง (' + noCoords.length + ')'));
+    if (state.sess && state.sess.isAdmin) {
+      sideHead.appendChild(btn('ตั้งค่าพิกัด', 'sm', function () {
+        state.settingsTab = 'sites';
+        goTab('settings');
+      }));
+    }
+    side.appendChild(sideHead);
+    side.appendChild(el('p', 'page-sub', 'สาขาหรือ interface ที่ยังไม่มีพิกัดบนแผนที่ แตะเพื่อดูรายการเครื่อง'));
+
+    if (!noCoords.length) {
+      side.appendChild(el('div', 'badge ok', 'ระบุพิกัดครบทุกสาขาแล้ว'));
+    } else {
+      noCoords.forEach(function (s) {
+        var b = el('button', 'branch-card' + (s.isSilent ? ' is-silent' : '') + (state.presenceSelectedKey === s.key ? ' is-selected' : ''));
+        b.type = 'button';
+        b.setAttribute('data-site-key', s.key);
+        var bh = el('div', 'item-head');
+        var bt = el('div');
+        bt.appendChild(el('span', 'site-code', s.site_id ? s.code : 'ยังไม่ผูกสาขา'));
+        bt.appendChild(el('div', 'item-title', s.name));
+        bh.appendChild(bt);
+        var stBadge = !summary.collector_ok
+          ? el('span', 'badge warn', 'ไม่มีข้อมูล')
+          : s.isSilent
+            ? el('span', 'badge err', 'เงียบ 0/' + s.total)
+            : el('span', 'badge ' + (s.online > 0 ? 'ok' : 'muted'), s.online + '/' + s.total);
+        bh.appendChild(stBadge);
+        b.appendChild(bh);
+        b.addEventListener('click', function () { onSelectSite(s.key); });
+        side.appendChild(b);
+      });
+    }
+    layout.appendChild(side);
+    container.appendChild(layout);
+
+    mapMountedHost = stage;
+    mapApi.mount(
+      stage,
+      {
+        collector_ok: summary.collector_ok,
+        sites: summary.sites,
+        selectedKey: state.presenceSelectedKey
+      },
+      function (siteKey) {
+        onSelectSite(siteKey);
+      }
+    );
+  }
+
+  function renderBranchCardGrid(host, summary, onSelectSite) {
+    if (!summary.sites.length) {
+      var emp = el('div', 'empty-state');
+      emp.appendChild(el('h2', '', 'ไม่พบสาขาหรือเครื่องที่ตรงกับเงื่อนไข'));
+      emp.appendChild(el('p', '', 'ลองล้างคำค้นหา หรือเปลี่ยนตัวกรองด้านบน'));
+      host.appendChild(emp);
+      return;
+    }
+
+    var secHead = el('div', 'toolbar');
+    secHead.appendChild(el('h3', 'item-title', 'การ์ดสาขา (' + summary.sites.length + ' แห่ง) — แตะการ์ดเพื่อดูรายการเครื่อง'));
+    host.appendChild(secHead);
+
+    var grid = el('div', 'branch-grid');
+    summary.sites.forEach(function (s) {
+      var card = el(
+        'button',
+        'branch-card' +
+          (s.isSilent ? ' is-silent' : '') +
+          (state.presenceSelectedKey === s.key ? ' is-selected' : '')
+      );
+      card.type = 'button';
+      card.setAttribute('data-site-key', s.key);
+
+      var ih = el('div', 'item-head');
+      var it = el('div');
+      it.appendChild(el('span', 'site-code', s.site_id ? s.code : 'ยังไม่ผูกสาขา'));
+      it.appendChild(el('h4', 'item-title', s.name));
+      ih.appendChild(it);
+
+      var badgeCls = !summary.collector_ok
+        ? 'warn'
+        : s.isSilent
+          ? 'err'
+          : s.online > 0
+            ? 'ok'
+            : 'muted';
+      var badgeText = !summary.collector_ok
+        ? 'ไม่มีข้อมูล (' + s.total + ')'
+        : s.isSilent
+          ? 'เงียบทั้งสาขา 0/' + s.total
+          : s.online + '/' + s.total + ' ออนไลน์';
+      ih.appendChild(el('span', 'badge ' + badgeCls, badgeText));
+      card.appendChild(ih);
+
+      // Device status dots
+      var dots = el('div', 'dot-strip');
+      if (!s.allDevices.length) {
+        dots.appendChild(el('span', 'page-sub', 'ยังไม่พบเครื่องจากไฟร์วอลล์'));
+      } else {
+        s.allDevices.slice(0, 24).forEach(function (d) {
+          var dotCls = !summary.collector_ok ? 'unknown' : (d.online ? 'online' : 'offline');
+          var dot = el('span', 'p-dot ' + dotCls);
+          dot.title = (d.label || d.device_name || d.mac) + ' (' + d.ip + ')';
+          dots.appendChild(dot);
+        });
+        if (s.allDevices.length > 24) {
+          dots.appendChild(el('span', 'page-sub', '+' + (s.allDevices.length - 24)));
+        }
+      }
+      card.appendChild(dots);
+
+      var meta = el('div', 'item-meta');
+      meta.appendChild(el('span', '', 'เปิดเครื่องแรกวันนี้: ' + (s.first_today ? bkkTimeHm(s.first_today) : '-')));
+      if (s.ifaces && s.ifaces.length) {
+        meta.appendChild(el('span', '', 'Tunnel: ' + s.ifaces.join(', ')));
+      }
+      card.appendChild(meta);
+
+      card.addEventListener('click', function () {
+        onSelectSite(s.key);
+      });
+      grid.appendChild(card);
+    });
+    host.appendChild(grid);
+  }
+
+  function renderSelectedSiteDetail(detailHost, summary) {
+    detailHost.innerHTML = '';
+    var chosen = summary.sites.find(function (s) { return s.key === state.presenceSelectedKey; });
+    if (!chosen && summary.sites.length) {
+      chosen = summary.sites.find(function (s) { return s.total > 0; }) || summary.sites[0];
+      state.presenceSelectedKey = chosen.key;
+    }
+    if (!chosen) return;
+
+    var secCard = el('div', 'sec-card');
+    secCard.style.marginTop = '16px';
+    var sh = el('div', 'sec-head');
+    var shLeft = el('div');
+    shLeft.appendChild(el('h3', '', (chosen.site_id ? chosen.code + ' ' : '[ยังไม่ผูกสาขา] ') + chosen.name + ' (' + chosen.devices.length + ' เครื่อง)'));
+    shLeft.appendChild(el('div', 'page-sub', 'เปิดเครื่องแรกวันนี้: ' + (chosen.first_today ? bkkTimeHm(chosen.first_today) : '-') + (chosen.ifaces.length ? ' · Interface: ' + chosen.ifaces.join(', ') : '')));
+    sh.appendChild(shLeft);
+
+    if (!chosen.site_id && state.sess && state.sess.isAdmin) {
+      sh.appendChild(btn('ผูกสาขาในตั้งค่า', 'primary sm', function () {
+        state.settingsTab = 'ifaces';
+        goTab('settings');
+      }));
+    }
+    secCard.appendChild(sh);
+
+    if (!chosen.devices.length) {
+      var emptyRow = el('div', 'dev-row');
+      emptyRow.appendChild(el('span', 'page-sub', 'ไม่มีเครื่องในสาขานี้ที่ตรงกับตัวกรองปัจจุบัน'));
+      secCard.appendChild(emptyRow);
+    } else {
+      chosen.devices.forEach(function (d) {
+        var row = el('div', 'dev-row');
+        var left = el('div', 'dev-main');
+        var dotCls = !summary.collector_ok ? 'unknown' : (d.online ? 'online' : 'offline');
+        left.appendChild(el('span', 'p-dot ' + dotCls));
+
+        var info = el('div');
+        var primaryName = d.label || d.device_name || d.mac;
+        var titleLine = el('div');
+        titleLine.appendChild(el('strong', '', primaryName));
+        if (d.device_name && d.label && d.device_name !== d.label) {
+          var linkTag = el('span', 'badge brand', d.device_name);
+          linkTag.style.marginLeft = '6px';
+          titleLine.appendChild(linkTag);
+        }
+        if (d.random_mac) {
+          var rndTag = el('span', 'badge muted', 'MAC สุ่ม');
+          rndTag.style.marginLeft = '6px';
+          titleLine.appendChild(rndTag);
+        }
+        info.appendChild(titleLine);
+
+        var subLine = el('div', 'dev-mono');
+        subLine.textContent = 'MAC ' + d.mac + ' · IP ' + d.ip + ' · ' + d.iface;
+        info.appendChild(subLine);
+
+        var timeLine = el('div', 'item-meta');
+        var statusWord = !summary.collector_ok ? 'ไม่มีข้อมูล' : (d.online ? 'ออนไลน์' : 'ออฟไลน์');
+        timeLine.appendChild(el('span', '', statusWord + ' · เห็นล่าสุด ' + thaiRelativeTime(d.last_seen, state.presenceData.now)));
+        if (d.day_first_seen) {
+          timeLine.appendChild(el('span', '', 'เปิดวันนี้ ' + bkkTimeHm(d.day_first_seen)));
+        }
+        info.appendChild(timeLine);
+        left.appendChild(info);
+        row.appendChild(left);
+
+        var actions = el('div', 'row-actions');
+        actions.appendChild(btn('ตั้งชื่อ / ผูกเครื่อง', 'sm', function () {
+          openPresenceLabelModal(d, chosen);
+        }));
+        actions.appendChild(btn('ซ่อน', 'danger sm', function () {
+          api('presence_label', { mac: d.mac, hidden: true }).then(function () {
+            showMsg('ซ่อนเครื่อง ' + (d.label || d.mac) + ' เรียบร้อยแล้ว', 'ok');
+            loadPresence(false);
+          }).catch(function (e) { showMsg(e.message, 'err'); });
+        }));
+        row.appendChild(actions);
+        secCard.appendChild(row);
+      });
+    }
+
+    detailHost.appendChild(secCard);
+  }
+
+  function openPresenceLabelModal(dev, siteGroup) {
+    openModal('ตั้งชื่อเล่น / ผูกเครื่อง ' + dev.mac, function (body, close) {
+      body.appendChild(el('div', 'dev-mono', 'MAC: ' + dev.mac + ' · IP ล่าสุด: ' + dev.ip + ' · Interface: ' + dev.iface));
+
+      var fLbl = el('label', 'field');
+      fLbl.appendChild(el('span', 'lbl', 'ชื่อเล่นเครื่อง (เช่น POS 1, เครื่องห้องยา)'));
+      var iLbl = el('input', 'input');
+      iLbl.value = dev.label || '';
+      iLbl.placeholder = 'เว้นว่างหากต้องการใช้ชื่อจากทะเบียนหรือ MAC';
+      fLbl.appendChild(iLbl);
+      body.appendChild(fLbl);
+
+      var chosenDevId = dev.device_id ? String(dev.device_id) : '';
+      var siteDevs = siteGroup.site_devices || [];
+      var devOpts = [{ value: '', label: '— ไม่ผูกกับทะเบียนเครื่อง —' }].concat(
+        siteDevs.map(function (sd) {
+          return { value: String(sd.id), label: sd.computer_name + ' (' + sd.role + (sd.ip ? ' · ' + sd.ip : '') + ')' };
+        })
+      );
+      var fLink = el('div', 'field');
+      fLink.appendChild(el('span', 'lbl', 'ผูกกับเครื่องในทะเบียน IT MA ของสาขานี้'));
+      var sel = makeSelect(devOpts, chosenDevId, function (nv) { chosenDevId = nv; }, 'เลือกเครื่องในทะเบียน');
+      fLink.appendChild(sel);
+      body.appendChild(fLink);
+
+      var act = el('div', 'row-actions');
+      act.appendChild(btn('บันทึก', 'primary', function () {
+        api('presence_label', {
+          mac: dev.mac,
+          label: iLbl.value.trim(),
+          device_id: chosenDevId ? Number(chosenDevId) : null
+        }).then(function () {
+          close();
+          showMsg('บันทึกข้อมูลเครื่อง ' + dev.mac + ' เรียบร้อยแล้ว', 'ok');
+          loadPresence(false);
+        }).catch(function (e) { showMsg(e.message, 'err'); });
+      }));
+      body.appendChild(act);
+      iLbl.focus();
+    });
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && state.tab === 'devices') {
+      loadPresence(true);
+    }
+  });
 
   // ---------------- Boot & SSO Exchange ----------------
   function showGate(title, detail) {
