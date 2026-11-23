@@ -574,10 +574,11 @@
     var legend = document.createElement('div');
     legend.className = 'presence-map-legend';
     legend.innerHTML =
-      '<span><span class="p-dot online"></span> ปกติ</span>' +
-      '<span><span class="p-dot" style="background:var(--c-warn)"></span> ดับบางเครื่อง</span>' +
-      '<span><span class="p-dot" style="background:var(--c-err)"></span> ดับทั้งสาขา</span>' +
-      '<span><span class="p-dot unknown"></span> ไม่มีข้อมูล</span>' +
+      // legend dots match the pastel glass bases (GLASS in mount)
+      '<span><span class="p-dot" style="background:#8fe3c0"></span> ปกติ</span>' +
+      '<span><span class="p-dot" style="background:#ffc98a"></span> ดับบางเครื่อง</span>' +
+      '<span><span class="p-dot" style="background:#ff9a9a"></span> ดับทั้งสาขา</span>' +
+      '<span><span class="p-dot" style="background:#c6cbe0"></span> ไม่มีข้อมูล</span>' +
       '<span class="legend-note">สีฐาน = สถานะ · สีตัวการ์ตูน = แบรนด์</span>';
 
     var tooltip = document.createElement('div');
@@ -694,6 +695,7 @@
           setPreset('nation');
         });
 
+        var GLASS = { ok: 0x8fe3c0, partial: 0xffc98a, silent: 0xff9a9a, none: 0xc6cbe0 };
         var pickMeshes = [];
         var pulseRings = [];
         var mascots = [];
@@ -779,14 +781,26 @@
             var pillarH = 0.1;
             var radius = 0.27;
             var geom = new THREE.CylinderGeometry(radius, radius, pillarH, 6);
-            var mat = new THREE.MeshLambertMaterial({
-              color: colorHex,
-              emissive: colorHex,
-              emissiveIntensity: isSilent ? 0.45 : 0.15
+            // Pastel "liquid glass" base: soft colour, translucent, glossy, with a light cap on top.
+            var glassHex = GLASS[status];
+            var mat = new THREE.MeshPhongMaterial({
+              color: glassHex,
+              emissive: glassHex,
+              emissiveIntensity: isSilent ? 0.35 : 0.18,
+              specular: 0xffffff,
+              shininess: 110,
+              transparent: true,
+              opacity: 0.82
             });
 
             var mesh = new THREE.Mesh(geom, mat);
             mesh.position.set(item.x, pillarH / 2 + 0.04, item.z);
+            var cap = new THREE.Mesh(
+              new THREE.CylinderGeometry(radius * 0.78, radius * 0.9, 0.012, 6),
+              new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42, depthWrite: false })
+            );
+            cap.position.set(item.x, pillarH + 0.05, item.z);
+            markersGroup.add(cap);
             mesh.userData = {
               site: s,
               siteKey: siteKeyValue(s),
@@ -907,13 +921,13 @@
           t.colorSpace = THREE.SRGBColorSpace;
           // cylinder cap UVs run sideways once the coin is stood up
           t.center.set(0.5, 0.5);
-          t.rotation = mirror ? -Math.PI / 2 : Math.PI / 2;
+          t.rotation = Math.PI / 2;
           return t;
         }
         var hubGeom = new THREE.CylinderGeometry(0.62, 0.62, 0.1, 48);
         hubGeom.rotateX(Math.PI / 2); // stand the coin up; faces look along Z
         var hubFront = coinFaceTexture(false);
-        var hubBack = coinFaceTexture(true);
+        var hubBack = coinFaceTexture(false); // the back cap UVs already mirror it back to readable
         var hubMat = [
           new THREE.MeshLambertMaterial({ color: 0xd4af37, emissive: 0x6b5410, emissiveIntensity: 0.4 }), // rim
           new THREE.MeshBasicMaterial({ map: hubFront }),
