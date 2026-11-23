@@ -2773,7 +2773,7 @@
   var mapMountedHost = null;
 
   function siteGroupKey(s) {
-    return s.site_id !== null && s.site_id !== undefined ? 'site:' + s.site_id : 'iface:' + s.code;
+    return s.site_id !== null && s.site_id !== undefined ? String(s.site_id) : String(s.code || '');
   }
 
   function startPresenceAutoRefresh() {
@@ -3081,13 +3081,23 @@
     host.innerHTML = '';
     detailHost.innerHTML = '';
 
-    var selectSiteKey = function (key) {
+    var selectSiteKey = function (rawKey) {
+      var key = String(rawKey);
       state.presenceSelectedKey = key;
       renderSelectedSiteDetail(detailHost, summary);
       [].forEach.call(host.querySelectorAll('[data-site-key]'), function (node) {
         if (node.getAttribute('data-site-key') === key) node.classList.add('is-selected');
         else node.classList.remove('is-selected');
       });
+      if (window.ItmPresenceMap && mapMountedHost && state.presenceViewMode === 'map') {
+        try {
+          window.ItmPresenceMap.update({
+            collector_ok: summary.collector_ok,
+            sites: summary.sites,
+            selectedKey: key
+          });
+        } catch (_e) {}
+      }
       if (detailHost.firstChild && typeof detailHost.scrollIntoView === 'function') {
         detailHost.scrollIntoView({ behavior: isReducedMotion() ? 'auto' : 'smooth', block: 'nearest' });
       }
