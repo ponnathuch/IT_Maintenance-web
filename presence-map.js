@@ -276,109 +276,143 @@
     return 'other';
   }
 
-  // Original "pill buddy" mascot drawn on canvas: capsule in brand colours, anime face per status,
-  // frames w0..w3 (walk), idle, blink, wave. Status also shows as a badge above the head.
+  // Original chibi pharmacy staff (about 2.3 heads tall), drawn on canvas. White coat with the
+  // brand colour at the collar and shirt, brand hair clip, anime eyes, one pose per status.
+  // Frames: w0..w3 (walk), idle, blink, wave. Status also shows as a badge above the head.
   function makeMascotTexture(THREE, status, brand, frame) {
     var B = BRANDS[brand] || BRANDS.other;
     var cv = document.createElement('canvas');
     cv.width = 128;
     cv.height = 208;
     var g = cv.getContext('2d');
-    var ink = B.ink;
-    var OY = 8; // body offset so brand marks fit above the head
+    var ink = '#2a2230';
+    var skin = '#ffe3cf';
+    var hair = '#4a2f27';
+    var brandCol = B.bottom;
+    var coat = brandCol; // shirt in the brand colour so brands read at a glance
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
 
-    g.fillStyle = 'rgba(0,0,0,0.18)';
-    g.beginPath();
-    g.ellipse(64, 200, 34, 6, 0, 0, Math.PI * 2);
-    g.fill();
-
-    // Walk cycle w0..w3 (side-on stride, faces right; the sprite is mirrored to walk left).
-    var STRIDE = { w0: 0.5, w1: 0, w2: -0.5, w3: 0 };
-    var stride = STRIDE[frame] !== undefined ? STRIDE[frame] : 0;
-    var seated = status === 'silent';
-    var LEG = 38;
-    function limb(x0, y0, ang, len, w) {
-      var x1 = x0 + Math.sin(ang) * len;
-      var y1 = y0 + Math.cos(ang) * len;
-      g.strokeStyle = ink;
-      g.lineCap = 'round';
+    function line(x0, y0, x1, y1, w, col) {
+      g.strokeStyle = col;
       g.lineWidth = w;
       g.beginPath();
       g.moveTo(x0, y0);
       g.lineTo(x1, y1);
       g.stroke();
-      return [x1, y1];
     }
-    function shoe(pt, dir) {
-      g.fillStyle = ink;
+    function dot(x, y, r, fill, stroke) {
+      g.fillStyle = fill;
       g.beginPath();
-      g.ellipse(pt[0] + dir * 4, pt[1] + 2, 10, 6, 0, 0, Math.PI * 2);
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+      if (stroke) {
+        g.strokeStyle = stroke;
+        g.lineWidth = 2.5;
+        g.stroke();
+      }
+    }
+    // sleeve with outline, ending in a hand
+    function arm(x0, y0, x1, y1) {
+      line(x0, y0, x1, y1, 11, ink);
+      line(x0, y0, x1, y1, 7, coat);
+      dot(x1, y1, 5.5, skin, ink);
+    }
+    function leg(x0, y0, ang, len) {
+      var x1 = x0 + Math.sin(ang) * len;
+      var y1 = y0 + Math.cos(ang) * len;
+      line(x0, y0, x1, y1, 10, ink);
+      line(x0, y0, x1, y1, 6, '#5d6b7a');
+      g.fillStyle = B.ink;
+      g.beginPath();
+      g.ellipse(x1 + 3, y1 + 2, 9, 5.5, 0, 0, Math.PI * 2);
       g.fill();
     }
+
+    // shadow
+    g.fillStyle = 'rgba(0,0,0,0.18)';
+    g.beginPath();
+    g.ellipse(64, 201, 30, 5, 0, 0, Math.PI * 2);
+    g.fill();
+
+    var STRIDE = { w0: 0.45, w1: 0, w2: -0.45, w3: 0 };
+    var stride = STRIDE[frame] !== undefined ? STRIDE[frame] : 0;
+    var seated = status === 'silent';
+    var dy = seated ? 18 : 0; // seated: whole upper body sits lower
+
+    // legs
     if (seated) {
-      // sitting on the ground, legs out front
-      shoe(limb(50, 152, 1.25, 26, 9), 1);
-      shoe(limb(78, 152, 1.25, 26, 9), 1);
+      leg(54, 176, 1.35, 24);
+      leg(74, 176, 1.35, 24);
     } else {
-      shoe(limb(56, 150, stride, LEG, 9), 1);
-      shoe(limb(72, 150, -stride, LEG, 9), 1);
+      leg(58, 160, stride, 30);
+      leg(70, 160, -stride, 30);
     }
 
-    function capsule() {
-      g.beginPath();
-      g.moveTo(24, 70 + OY);
-      g.arc(64, 70 + OY, 40, Math.PI, 0);
-      g.lineTo(104, 110 + OY);
-      g.arc(64, 110 + OY, 40, 0, Math.PI);
-      g.closePath();
-    }
-    g.save();
-    capsule();
-    g.clip();
-    g.fillStyle = B.top;
-    g.fillRect(0, 0, 128, 96 + OY);
-    g.fillStyle = B.bottom;
-    g.fillRect(0, 96 + OY, 128, 80);
-    g.restore();
-    g.lineWidth = 4;
+    // coat body
+    g.fillStyle = coat;
     g.strokeStyle = ink;
-    capsule();
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(44, 116 + dy);
+    g.lineTo(84, 116 + dy);
+    g.quadraticCurveTo(92, 140 + dy, 90, 164 + dy);
+    g.lineTo(38, 164 + dy);
+    g.quadraticCurveTo(36, 140 + dy, 44, 116 + dy);
+    g.closePath();
+    g.fill();
     g.stroke();
-
-    // arms: swing against the legs while walking; wave when idle; hands on face when crying
-    function hand(pt) {
-      g.fillStyle = B.top;
-      g.strokeStyle = ink;
-      g.lineWidth = 3;
+    // white collar
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.moveTo(54, 116 + dy);
+    g.lineTo(74, 116 + dy);
+    g.lineTo(64, 136 + dy);
+    g.closePath();
+    g.fill();
+    line(64, 136 + dy, 64, 162 + dy, 2, 'rgba(0,0,0,0.35)');
+    if (brand === 'hq') {
+      g.fillStyle = B.ink;
       g.beginPath();
-      g.arc(pt[0], pt[1], 7, 0, Math.PI * 2);
+      g.moveTo(61, 120 + dy); g.lineTo(67, 120 + dy); g.lineTo(69, 140 + dy); g.lineTo(64, 146 + dy); g.lineTo(59, 140 + dy);
+      g.closePath();
       g.fill();
-      g.stroke();
-    }
-    if (status === 'silent') {
-      hand(limb(26, 116, 2.5, 34, 8));
-      hand(limb(102, 116, -2.5, 34, 8));
-    } else if (status === 'partial') {
-      hand(limb(26, 116, 0.25 - stride * 0.8, 30, 8));
-      hand(limb(102, 116, -2.75, 52, 8));
-    } else if (frame === 'wave') {
-      hand(limb(26, 116, 0.25, 30, 8));
-      hand(limb(102, 116, -2.6, 32, 8));
-    } else {
-      hand(limb(26, 116, 0.25 - stride * 0.8, 30, 8));
-      hand(limb(102, 116, -0.25 - stride * 0.8, 30, 8));
-    }
-
-    // brand marks
-    if (brand === 'icare') {
+    } else if (brand === 'sd') {
       g.fillStyle = '#ffffff';
-      g.beginPath();
-      g.arc(64, 18, 14, 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = B.bottom;
-      g.beginPath();
-      g.arc(64, 18, 11, 0, Math.PI * 2);
-      g.fill();
+      g.font = 'bold 14px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('S', 78, 146 + dy);
+      g.textAlign = 'start';
+    }
+
+    // back hair (behind the head, gives the side locks)
+    dot(64, 70 + dy, 50, hair);
+    g.fillStyle = hair;
+    g.fillRect(16, 70 + dy, 96, 34);
+
+    // head
+    dot(64, 74 + dy, 44, skin, ink);
+
+    // fringe
+    g.fillStyle = hair;
+    g.beginPath();
+    g.moveTo(18, 78 + dy);
+    g.arc(64, 72 + dy, 47, Math.PI * 1.02, Math.PI * 1.98);
+    g.lineTo(110, 78 + dy);
+    g.lineTo(98, 58 + dy);
+    g.lineTo(90, 70 + dy);
+    g.lineTo(78, 54 + dy);
+    g.lineTo(66, 68 + dy);
+    g.lineTo(54, 54 + dy);
+    g.lineTo(42, 70 + dy);
+    g.lineTo(32, 58 + dy);
+    g.closePath();
+    g.fill();
+
+    // brand hair clip
+    if (brand === 'icare') {
+      dot(96, 44 + dy, 9, '#ffffff');
+      dot(96, 44 + dy, 7, brandCol);
     } else if (brand === 'pm') {
       var leaf = function (cx, cy, rot, col) {
         g.save();
@@ -386,115 +420,114 @@
         g.rotate(rot);
         g.fillStyle = col;
         g.beginPath();
-        g.ellipse(0, 0, 6, 11, 0, 0, Math.PI * 2);
+        g.ellipse(0, 0, 4.5, 8, 0, 0, Math.PI * 2);
         g.fill();
         g.restore();
       };
-      leaf(52, 26, -0.7, '#04ae8a');
-      leaf(64, 20, 0, '#f28290');
-      leaf(76, 26, 0.7, '#feb514');
-    } else if (brand === 'sd' || brand === 'hq') {
-      g.fillStyle = '#ffffff';
-      g.font = 'bold 30px sans-serif';
-      g.textAlign = 'center';
-      g.fillText(brand === 'sd' ? 'S' : 'H', 64, 140 + OY);
-      g.textAlign = 'start';
+      leaf(88, 42 + dy, -0.7, '#04ae8a');
+      leaf(96, 38 + dy, 0, '#f28290');
+      leaf(104, 42 + dy, 0.7, '#feb514');
+    } else if (brand === 'sd') {
+      dot(96, 44 + dy, 6, brandCol, '#ffffff');
     }
 
-    function eye(x, y) {
+    // face
+    var ey = 86 + dy;
+    function eye(x) {
       g.fillStyle = ink;
       g.beginPath();
-      g.ellipse(x, y, 8, 11, 0, 0, Math.PI * 2);
+      g.ellipse(x, ey, 8.5, 12, 0, 0, Math.PI * 2);
       g.fill();
-      g.fillStyle = '#ffffff';
+      g.fillStyle = B.ink === '#22303c' ? '#3b6e8f' : B.ink;
       g.beginPath();
-      g.arc(x - 3, y - 4, 3.4, 0, Math.PI * 2);
+      g.ellipse(x, ey + 3, 6, 7.5, 0, 0, Math.PI * 2);
       g.fill();
-      g.beginPath();
-      g.arc(x + 3, y + 4, 1.6, 0, Math.PI * 2);
-      g.fill();
+      dot(x - 3, ey - 5, 3.2, '#ffffff');
+      dot(x + 3, ey + 5, 1.5, '#ffffff');
     }
-    function shut(x, y) {
+    function shut(x) {
+      g.strokeStyle = ink;
+      g.lineWidth = 3;
       g.beginPath();
-      g.arc(x, y, 7, Math.PI * 1.1, Math.PI * 1.9);
+      g.arc(x, ey + 2, 7, Math.PI * 1.1, Math.PI * 1.9);
       g.stroke();
     }
     function blush() {
       g.fillStyle = 'rgba(255,120,150,0.45)';
       g.beginPath();
-      g.ellipse(36, 88 + OY, 8, 4, 0, 0, Math.PI * 2);
-      g.ellipse(92, 88 + OY, 8, 4, 0, 0, Math.PI * 2);
+      g.ellipse(38, ey + 14, 7, 3.5, 0, 0, Math.PI * 2);
+      g.ellipse(90, ey + 14, 7, 3.5, 0, 0, Math.PI * 2);
       g.fill();
     }
     function badge(col) {
-      g.fillStyle = col;
-      g.beginPath();
-      g.arc(106, 40, 14, 0, Math.PI * 2);
-      g.fill();
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 3;
-      g.stroke();
+      dot(110, 22, 13, col, '#ffffff');
       g.fillStyle = '#ffffff';
-      g.font = 'bold 20px sans-serif';
+      g.font = 'bold 18px sans-serif';
       g.textAlign = 'center';
-      g.fillText('!', 106, 47);
+      g.fillText('!', 110, 28);
       g.textAlign = 'start';
     }
-    g.lineCap = 'round';
-    g.lineWidth = 3.5;
-    g.strokeStyle = ink;
     var blinking = frame === 'blink';
-    var ey = 70 + OY;
 
     if (status === 'ok') {
-      if (blinking) { shut(48, ey + 2); shut(80, ey + 2); } else { eye(48, ey); eye(80, ey); }
+      if (blinking) { shut(48); shut(80); } else { eye(48); eye(80); }
       blush();
       g.fillStyle = '#e8577a';
       g.beginPath();
-      g.arc(64, ey + 14, 8, 0, Math.PI);
+      g.arc(64, ey + 16, 5, 0, Math.PI);
       g.closePath();
       g.fill();
-      g.stroke();
     } else if (status === 'partial') {
-      if (blinking) { shut(48, ey + 4); shut(80, ey + 4); } else { eye(48, ey + 2); eye(80, ey + 2); }
+      if (blinking) { shut(48); shut(80); } else { eye(48); eye(80); }
       blush();
+      line(38, ey - 17, 54, ey - 14, 2.5, ink);
+      line(90, ey - 17, 74, ey - 14, 2.5, ink);
+      g.strokeStyle = ink;
+      g.lineWidth = 2.5;
       g.beginPath();
-      g.moveTo(38, ey - 14); g.lineTo(54, ey - 10);
-      g.moveTo(90, ey - 14); g.lineTo(74, ey - 10);
-      g.moveTo(54, ey + 20); g.quadraticCurveTo(59, ey + 15, 64, ey + 20); g.quadraticCurveTo(69, ey + 25, 74, ey + 20);
+      g.moveTo(56, ey + 18); g.quadraticCurveTo(60, ey + 14, 64, ey + 18); g.quadraticCurveTo(68, ey + 22, 72, ey + 18);
       g.stroke();
       g.fillStyle = '#7cc8ff';
       g.beginPath();
-      g.moveTo(24, ey - 22);
-      g.quadraticCurveTo(32, ey - 8, 24, ey - 4);
-      g.quadraticCurveTo(16, ey - 8, 24, ey - 22);
+      g.moveTo(22, ey - 20);
+      g.quadraticCurveTo(29, ey - 8, 22, ey - 4);
+      g.quadraticCurveTo(15, ey - 8, 22, ey - 20);
       g.fill();
       badge('#f59e0b');
     } else if (status === 'silent') {
-      g.beginPath();
-      g.moveTo(40, ey - 6); g.lineTo(54, ey + 2); g.lineTo(40, ey + 10);
-      g.moveTo(88, ey - 6); g.lineTo(74, ey + 2); g.lineTo(88, ey + 10);
-      g.stroke();
+      line(40, ey - 6, 54, ey + 1, 3, ink); line(54, ey + 1, 40, ey + 8, 3, ink);
+      line(88, ey - 6, 74, ey + 1, 3, ink); line(74, ey + 1, 88, ey + 8, 3, ink);
       g.fillStyle = ink;
       g.beginPath();
-      g.ellipse(64, ey + 20, 7, 6, 0, 0, Math.PI * 2);
+      g.ellipse(64, ey + 20, 6, 5, 0, 0, Math.PI * 2);
       g.fill();
       g.fillStyle = '#7cc8ff';
-      g.fillRect(42, ey + 10, 5, 18);
-      g.fillRect(81, ey + 10, 5, 18);
+      g.fillRect(42, ey + 8, 5, 18);
+      g.fillRect(81, ey + 8, 5, 18);
       badge('#d92d20');
     } else {
-      g.beginPath();
-      g.arc(48, ey + 2, 7, 0, Math.PI);
-      g.moveTo(87, ey + 2);
-      g.arc(80, ey + 2, 7, 0, Math.PI);
-      g.moveTo(58, ey + 18); g.lineTo(70, ey + 18);
-      g.stroke();
+      shut(48); shut(80);
+      line(59, ey + 16, 69, ey + 16, 2.5, ink);
       g.fillStyle = ink;
-      g.font = 'bold 18px sans-serif';
-      g.fillText('z', 98, 46);
-      g.font = 'bold 13px sans-serif';
-      g.fillText('z', 110, 32);
+      g.font = 'bold 16px sans-serif';
+      g.fillText('z', 100, 34 + dy);
+      g.font = 'bold 12px sans-serif';
+      g.fillText('z', 112, 22 + dy);
+    }
+
+    // arms last so hands sit in front of the body and face
+    if (status === 'silent') {
+      arm(44, 124 + dy, 46, ey + 6);
+      arm(84, 124 + dy, 82, ey + 6);
+    } else if (status === 'partial') {
+      arm(44, 124, 34 - stride * 14, 146);
+      arm(84, 124, 98, 46);
+    } else if (frame === 'wave') {
+      arm(44, 124, 34, 146);
+      arm(84, 124, 108, 98);
+    } else {
+      arm(44, 124, 34 - stride * 14, 146);
+      arm(84, 124, 94 + stride * 14, 146);
     }
 
     var tex = new THREE.CanvasTexture(cv);
