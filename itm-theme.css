@@ -1643,3 +1643,30 @@ table.grid thead th.sticky-col {
   .chk-btn[aria-pressed="false"] { display: none; }
 }
 .presence-map-legend .legend-note { opacity: 0.75; font-weight: 400; }
+
+/* Floating back-to-top button; sits above the mobile bottom nav */
+.to-top {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--size-bnav) + var(--space-4) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-capsule);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 var(--glass-spec-top), var(--glass-shadow);
+  color: var(--c-ink-3);
+  cursor: pointer;
+}
+.to-top[hidden] { display: none; }
+.to-top:hover { color: var(--c-ok); }
+.to-top:focus-visible { outline: 2px solid var(--c-ok); outline-offset: 2px; }
+@media (min-width: 768px) {
+  .to-top { bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); right: var(--space-6); }
+}

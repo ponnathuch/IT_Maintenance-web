@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261123j">
+<link rel="stylesheet" href="itm-theme.css?v=20261123k">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -110,6 +110,7 @@
 
   // ---------------- Inline SVG Icons (Zero Emoji) ----------------
   var SVG_PATHS = {
+    up: '<polyline points="18 15 12 9 6 15"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     tasks: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
@@ -2804,7 +2805,7 @@
     if (mapModulePromise) return mapModulePromise;
     mapModulePromise = new Promise(function (resolve) {
       var s = document.createElement('script');
-      s.src = 'presence-map.js?v=20261123j';
+      s.src = 'presence-map.js?v=20261123k';
       s.onload = function () { resolve(window.ItmPresenceMap || null); };
       s.onerror = function () { mapModulePromise = null; resolve(null); };
       document.head.appendChild(s);
@@ -3527,6 +3528,24 @@
       showGate('กรุณาเข้าใช้งานผ่าน Job Tracker', 'เปิดเมนู "IT MA" จากแถบข้างใน Job Tracker เพื่อเข้าสู่ระบบโดยไม่ต้องกรอกรหัสผ่าน');
     }
   }
+
+  // Floating "back to top" button, shown once the page has scrolled.
+  (function () {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'to-top';
+    b.setAttribute('aria-label', 'กลับขึ้นด้านบน');
+    b.title = 'กลับขึ้นด้านบน';
+    b.hidden = true;
+    b.appendChild(icon('up', 22));
+    b.addEventListener('click', function () {
+      window.scrollTo({ top: 0, behavior: isReducedMotion() ? 'auto' : 'smooth' });
+    });
+    document.body.appendChild(b);
+    var onScroll = function () { b.hidden = window.scrollY < 400; };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
 
   boot();
 })();
