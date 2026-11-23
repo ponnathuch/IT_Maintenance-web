@@ -588,14 +588,16 @@
               ? 'เงียบทั้งสาขา 0/' + s.total + ' เครื่อง'
               : 'ออนไลน์ ' + s.online + '/' + s.total + ' เครื่อง';
 
-          tooltip.innerHTML =
-            '<strong>' +
-            (s.code || '') +
-            '</strong> · ' +
-            (s.name || '') +
-            '<br><span>' +
-            stText +
-            '</span>';
+          // Build with textContent: site names and Sophos iface names are untrusted text.
+          tooltip.textContent = '';
+          var tipCode = document.createElement('strong');
+          tipCode.textContent = s.code || '';
+          var tipStatus = document.createElement('span');
+          tipStatus.textContent = stText;
+          tooltip.appendChild(tipCode);
+          tooltip.appendChild(document.createTextNode(' · ' + (s.name || '')));
+          tooltip.appendChild(document.createElement('br'));
+          tooltip.appendChild(tipStatus);
           tooltip.style.left = Math.max(70, Math.min(rect.width - 70, sx)) + 'px';
           tooltip.style.top = Math.max(44, Math.min(rect.height - 20, sy)) + 'px';
           tooltip.hidden = false;
