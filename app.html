@@ -79,6 +79,7 @@
     missing_owner: 'กรุณาระบุผู้รับผิดชอบหลัก',
     missing_applies_to: 'กรุณาเลือกประเภทเครื่องอย่างน้อย 1 ประเภท',
     bad_location: 'อ่านพิกัดไม่ได้ ใช้รูปแบบ 13.7563, 100.5018 หรือลิงก์ Google Maps แบบเต็ม',
+    bad_hours: 'รูปแบบเวลาเปิด-ปิดไม่ถูกต้อง (ใช้รูปแบบ HH:MM เช่น 08:00)',
     duplicate: 'มีข้อมูลซ้ำในระบบแล้ว',
     server: 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'
   };
@@ -105,6 +106,8 @@
     presenceRandomMac: false,
     presenceSelectedKey: null,
     presenceViewMode: 'map', // 'map' | 'list'
+    presenceHistCache: {},
+    presenceHistSelectedDay: {},
     navSeq: 0
   };
 
@@ -2436,13 +2439,19 @@
         });
         var wrap = el('div', 'table-wrap');
         var tbl = el('table', 'grid');
-        tbl.innerHTML = '<thead><tr><th class="sticky-col">รหัส</th><th>ชื่อสาขา</th><th>แบรนด์</th><th>พิกัดแผนที่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>';
+        tbl.innerHTML = '<thead><tr><th class="sticky-col">รหัส</th><th>ชื่อสาขา</th><th>แบรนด์</th><th>เวลาทำการ</th><th>พิกัดแผนที่</th><th>สถานะ</th><th>จัดการ</th></tr></thead>';
         var tbody = el('tbody');
+        var DOW_SHORT = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
         list.forEach(function (s) {
           var tr = el('tr');
           tr.appendChild(el('td', 'sticky-col site-code', s.code));
           tr.appendChild(el('td', '', s.name));
           tr.appendChild(el('td', '', s.brand || '-'));
+          var ot = String(s.open_time || '08:00').slice(0, 5);
+          var ct = String(s.close_time || '21:00').slice(0, 5);
+          var cDow = Array.isArray(s.closed_dow) ? s.closed_dow : [];
+          var hrTxt = (ot === ct ? '24 ชั่วโมง' : ot + ' - ' + ct) + (cDow.length ? ' (หยุด ' + cDow.map(function (d) { return DOW_SHORT[d] || d; }).join(',') + ')' : '');
+          tr.appendChild(el('td', 'dev-mono', hrTxt));
           var hasCoord = s.lat !== null && s.lat !== undefined && s.lng !== null && s.lng !== undefined;
           tr.appendChild(el('td', 'dev-mono', hasCoord ? Number(s.lat).toFixed(4) + ', ' + Number(s.lng).toFixed(4) : 'ยังไม่ระบุ'));
           var tdSt = el('td'); tdSt.appendChild(el('span', 'badge ' + (s.active ? 'ok' : 'muted'), s.active ? 'เปิดใช้งาน' : 'ปิดสาขา')); tr.appendChild(tdSt);
@@ -2557,6 +2566,46 @@
       iLoc.value = hasCoord ? (existing.lat + ', ' + existing.lng) : '';
       fLoc.appendChild(iLoc); body.appendChild(fLoc);
 
+      var fgHr = el('div', 'form-grid two');
+      var fOpen = el('label', 'field'); fOpen.appendChild(el('span', 'lbl', 'เวลาเปิดทำการ (00:00 = 24 ชม. เมื่อเท่ากับเวลาปิด)'));
+      var iOpen = el('input', 'input'); iOpen.type = 'time'; iOpen.value = existing && existing.open_time ? String(existing.open_time).slice(0, 5) : '08:00';
+      fOpen.appendChild(iOpen); fgHr.appendChild(fOpen);
+
+      var fClose = el('label', 'field'); fClose.appendChild(el('span', 'lbl', 'เวลาปิดทำการ'));
+      var iClose = el('input', 'input'); iClose.type = 'time'; iClose.value = existing && existing.close_time ? String(existing.close_time).slice(0, 5) : '21:00';
+      fClose.appendChild(iClose); fgHr.appendChild(fClose);
+      body.appendChild(fgHr);
+
+      var closedDow = existing && Array.isArray(existing.closed_dow) ? existing.closed_dow.slice() : [];
+      var fDow = el('div', 'field');
+      fDow.appendChild(el('span', 'lbl', 'วันหยุดประจำสัปดาห์ (กดเลือกวันที่หยุด)'));
+      var dowRow = el('div', 'dow-pills');
+      [['0', 'อาทิตย์'], ['1', 'จันทร์'], ['2', 'อังคาร'], ['3', 'พุธ'], ['4', 'พฤหัสบดี'], ['5', 'ศุกร์'], ['6', 'เสาร์']].forEach(function (d) {
+        var dNum = Number(d[0]);
+        var b = el('button', 'btn sm', d[1]);
+        b.type = 'button';
+        var syncDow = function () {
+          var on = closedDow.indexOf(dNum) !== -1;
+          b.className = 'btn sm' + (on ? ' primary' : '');
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        syncDow();
+        b.addEventListener('click', function () {
+          var idx = closedDow.indexOf(dNum);
+          if (idx === -1) closedDow.push(dNum); else closedDow.splice(idx, 1);
+          syncDow();
+        });
+        dowRow.appendChild(b);
+      });
+      fDow.appendChild(dowRow);
+      body.appendChild(fDow);
+
+      var fHrNote = el('label', 'field'); fHrNote.appendChild(el('span', 'lbl', 'หมายเหตุเวลาทำการ'));
+      var iHrNote = el('input', 'input');
+      iHrNote.placeholder = 'เช่น เปิดบริการทุกวัน 08.00-21.00 น.';
+      iHrNote.value = existing && existing.hours_note ? existing.hours_note : '';
+      fHrNote.appendChild(iHrNote); body.appendChild(fHrNote);
+
       var activeVal = existing ? existing.active : true;
       var fA = el('div', 'field'); fA.appendChild(el('span', 'lbl', 'สถานะสาขา'));
       var seg = el('div', 'seg');
@@ -2583,7 +2632,11 @@
           name: iN.value.trim(),
           brand: iB.value.trim(),
           active: activeVal,
-          location: iLoc.value.trim()
+          location: iLoc.value.trim(),
+          open_time: (iOpen.value || '08:00').slice(0, 5),
+          close_time: (iClose.value || '21:00').slice(0, 5),
+          closed_dow: closedDow,
+          hours_note: iHrNote.value.trim()
         }).then(function () {
           close(); showMsg('บันทึกข้อมูลสาขาเรียบร้อยแล้ว', 'ok'); loadSettings();
         }).catch(function (e) {
@@ -2882,6 +2935,10 @@
         brand: s.brand,
         lat: s.lat,
         lng: s.lng,
+        open_time: s.open_time || '08:00',
+        close_time: s.close_time || '21:00',
+        closed_dow: s.closed_dow || [],
+        hours_note: s.hours_note || '',
         ifaces: s.ifaces || [],
         online: onlineCnt,
         total: totalCnt,
@@ -3359,7 +3416,10 @@
     var sh = el('div', 'sec-head');
     var shLeft = el('div');
     shLeft.appendChild(el('h3', '', (chosen.site_id ? chosen.code + ' ' : '[ยังไม่ผูกสาขา] ') + chosen.name + ' (' + chosen.devices.length + ' เครื่อง)'));
-    shLeft.appendChild(el('div', 'page-sub', 'เปิดเครื่องแรกวันนี้: ' + (chosen.first_today ? bkkTimeHm(chosen.first_today) : '-') + (chosen.ifaces.length ? ' · Interface: ' + chosen.ifaces.join(', ') : '')));
+    var hrLabel = chosen.site_id
+      ? ' · เวลาทำการ ' + (chosen.open_time === chosen.close_time ? '24 ชั่วโมง' : chosen.open_time + '-' + chosen.close_time + ' น.')
+      : '';
+    shLeft.appendChild(el('div', 'page-sub', 'เปิดเครื่องแรกวันนี้: ' + (chosen.first_today ? bkkTimeHm(chosen.first_today) : '-') + hrLabel + (chosen.ifaces.length ? ' · Interface: ' + chosen.ifaces.join(', ') : '')));
     sh.appendChild(shLeft);
 
     if (!chosen.site_id && state.sess && state.sess.isAdmin) {
@@ -3369,6 +3429,12 @@
       }));
     }
     secCard.appendChild(sh);
+
+    if (chosen.site_id) {
+      var histHost = el('div', 'hist-box');
+      secCard.appendChild(histHost);
+      mountSiteHistoryBox(histHost, chosen);
+    }
 
     if (!chosen.devices.length) {
       var emptyRow = el('div', 'dev-row');
@@ -3427,6 +3493,277 @@
     }
 
     detailHost.appendChild(secCard);
+  }
+
+  function bkkMinuteOfDay(iso) {
+    if (!iso) return null;
+    var ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return null;
+    var d = new Date(ms + 7 * 3600 * 1000);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+  }
+
+  function hmToMinute(hm, def) {
+    var m = /^(\d{2}):(\d{2})/.exec(String(hm || ''));
+    if (!m) return def;
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+
+  function shiftIsoDay(isoDay, deltaDays) {
+    var p = isoDay.split('-').map(Number);
+    var dt = new Date(Date.UTC(p[0], p[1] - 1, p[2] + deltaDays));
+    return dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(dt.getUTCDate()).padStart(2, '0');
+  }
+
+  function mountSiteHistoryBox(host, siteGroup) {
+    var sid = siteGroup.site_id;
+    var cached = state.presenceHistCache[sid];
+    if (cached) {
+      drawSiteHistoryBox(host, siteGroup, cached);
+      return;
+    }
+    host.textContent = 'กำลังโหลดประวัติออนไลน์ 30 วันล่าสุด...';
+    api('presence_site_history', { site_id: sid, days: 30 }).then(function (res) {
+      state.presenceHistCache[sid] = res;
+      if (state.tab === 'devices' && String(state.presenceSelectedKey) === String(siteGroup.key)) {
+        drawSiteHistoryBox(host, siteGroup, res);
+      }
+    }).catch(function () {
+      host.textContent = 'ไม่สามารถโหลดประวัติ 30 วันได้ในขณะนี้';
+    });
+  }
+
+  function drawSiteHistoryBox(host, siteGroup, hist) {
+    host.innerHTML = '';
+    var sid = siteGroup.site_id;
+    var refToday = (state.presenceData && state.presenceData.now) ? state.presenceData.now.slice(0, 10) : bkkToday();
+    var dayMap = {};
+    (hist.days || []).forEach(function (d) { dayMap[d.day] = d; });
+    var macByDay = {};
+    (hist.mac_days || []).forEach(function (m) {
+      if (!macByDay[m.day]) macByDay[m.day] = [];
+      macByDay[m.day].push(m);
+    });
+
+    var slots = [];
+    var activeDays = 0;
+    var silentDays = 0;
+    var totalSilentMins = 0;
+    for (var i = 29; i >= 0; i--) {
+      var dStr = shiftIsoDay(refToday, -i);
+      var rec = dayMap[dStr] || null;
+      if (rec) {
+        activeDays++;
+        if (rec.silent_open_mins > 0) {
+          silentDays++;
+          totalSilentMins += rec.silent_open_mins;
+        }
+      }
+      slots.push({ day: dStr, rec: rec });
+    }
+
+    var selDay = state.presenceHistSelectedDay[sid];
+    if (!selDay || !slots.some(function (s) { return s.day === selDay; })) {
+      var lastWithData = slots.slice().reverse().find(function (s) { return !!s.rec; });
+      selDay = lastWithData ? lastWithData.day : refToday;
+      state.presenceHistSelectedDay[sid] = selDay;
+    }
+
+    var head = el('div', 'hist-head');
+    var titleWrap = el('div');
+    titleWrap.appendChild(el('strong', '', 'ประวัติออนไลน์ 30 วันล่าสุด'));
+    var sInfo = hist.site || siteGroup;
+    var openStr = sInfo.open_time || '08:00';
+    var closeStr = sInfo.close_time || '21:00';
+    var subText = (openStr === closeStr ? 'เปิด 24 ชั่วโมง' : 'เวลาทำการ ' + openStr + '-' + closeStr + ' น.')
+      + (sInfo.hours_note ? ' · ' + sInfo.hours_note : '');
+    titleWrap.appendChild(el('div', 'page-sub', subText));
+    head.appendChild(titleWrap);
+
+    var kpis = el('div', 'hist-kpis');
+    kpis.appendChild(el('span', 'badge ok', 'มีข้อมูล ' + activeDays + '/30 วัน'));
+    kpis.appendChild(
+      el(
+        'span',
+        'badge ' + (silentDays > 0 ? 'err' : 'brand'),
+        silentDays > 0 ? ('เงียบในเวลาทำการ ' + silentDays + ' วัน (รวม ' + totalSilentMins + ' นาที)') : 'ไม่พบช่วงเงียบในเวลาทำการ'
+      )
+    );
+    head.appendChild(kpis);
+    host.appendChild(head);
+
+    // Inline SVG 30-day chart (00:00 top -> 24:00 bottom, with operating hours guides)
+    var svgWrap = el('div', 'hist-svg-wrap');
+    var W = 620, H = 148, padL = 38, padR = 10, padT = 14, padB = 24;
+    var plotW = W - padL - padR;
+    var plotH = H - padT - padB;
+    var stepX = plotW / 30;
+    var openMin = hmToMinute(openStr, 480);
+    var closeMin = hmToMinute(closeStr, 1260);
+    var yOfMin = function (m) { return Math.round(padT + (Math.max(0, Math.min(1440, m)) / 1440) * plotH); };
+
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('class', 'hist-svg');
+    svg.setAttribute('role', 'group');
+    svg.setAttribute('aria-label', 'กราฟประวัติออนไลน์ 30 วันล่าสุดของสาขา ' + siteGroup.code);
+
+    // Time grid lines (00:00, 06:00, 12:00, 18:00, 24:00)
+    [0, 360, 720, 1080, 1440].forEach(function (m) {
+      var y = yOfMin(m);
+      var ln = document.createElementNS(NS, 'line');
+      ln.setAttribute('x1', String(padL));
+      ln.setAttribute('x2', String(W - padR));
+      ln.setAttribute('y1', String(y));
+      ln.setAttribute('y2', String(y));
+      ln.setAttribute('stroke', 'currentColor');
+      ln.setAttribute('stroke-opacity', '0.12');
+      svg.appendChild(ln);
+
+      var tx = document.createElementNS(NS, 'text');
+      tx.setAttribute('x', String(padL - 5));
+      tx.setAttribute('y', String(y + 3));
+      tx.setAttribute('text-anchor', 'end');
+      tx.setAttribute('font-size', '9');
+      tx.setAttribute('fill', 'currentColor');
+      tx.setAttribute('fill-opacity', '0.65');
+      tx.textContent = String(Math.floor(m / 60)).padStart(2, '0') + ':00';
+      svg.appendChild(tx);
+    });
+
+    // Operating hours dashed boundary lines
+    if (openMin !== closeMin) {
+      [openMin, closeMin].forEach(function (m) {
+        var y = yOfMin(m);
+        var gl = document.createElementNS(NS, 'line');
+        gl.setAttribute('x1', String(padL));
+        gl.setAttribute('x2', String(W - padR));
+        gl.setAttribute('y1', String(y));
+        gl.setAttribute('y2', String(y));
+        gl.setAttribute('stroke', 'var(--c-brand)');
+        gl.setAttribute('stroke-dasharray', '3,3');
+        gl.setAttribute('stroke-opacity', '0.55');
+        svg.appendChild(gl);
+      });
+    }
+
+    slots.forEach(function (sl, idx) {
+      var cx = padL + idx * stepX + stepX / 2;
+      var barW = Math.max(8, Math.round(stepX - 5));
+      var bx = Math.round(cx - barW / 2);
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('tabindex', '0');
+      g.setAttribute('role', 'button');
+      g.style.cursor = 'pointer';
+      var isSel = sl.day === selDay;
+
+      // Selection background highlight
+      if (isSel) {
+        var selBg = document.createElementNS(NS, 'rect');
+        selBg.setAttribute('x', String(bx - 2));
+        selBg.setAttribute('y', String(padT - 4));
+        selBg.setAttribute('width', String(barW + 4));
+        selBg.setAttribute('height', String(plotH + 8));
+        selBg.setAttribute('rx', '4');
+        selBg.setAttribute('fill', 'var(--c-brand-soft)');
+        selBg.setAttribute('stroke', 'var(--c-brand)');
+        g.appendChild(selBg);
+      }
+
+      // Base track
+      var track = document.createElementNS(NS, 'rect');
+      track.setAttribute('x', String(bx));
+      track.setAttribute('y', String(padT));
+      track.setAttribute('width', String(barW));
+      track.setAttribute('height', String(plotH));
+      track.setAttribute('rx', '3');
+      track.setAttribute('fill', 'currentColor');
+      track.setAttribute('fill-opacity', '0.06');
+      g.appendChild(track);
+
+      if (sl.rec) {
+        var fMin = bkkMinuteOfDay(sl.rec.first_seen);
+        var lMin = bkkMinuteOfDay(sl.rec.last_seen);
+        if (fMin === null) fMin = openMin;
+        if (lMin === null || lMin < fMin) lMin = Math.min(1440, fMin + 60);
+        var y1 = yOfMin(fMin);
+        var y2 = Math.max(y1 + 6, yOfMin(lMin));
+        var hasSilent = sl.rec.silent_open_mins > 0;
+
+        var bar = document.createElementNS(NS, 'rect');
+        bar.setAttribute('x', String(bx));
+        bar.setAttribute('y', String(y1));
+        bar.setAttribute('width', String(barW));
+        bar.setAttribute('height', String(y2 - y1));
+        bar.setAttribute('rx', '3');
+        bar.setAttribute('fill', hasSilent ? 'var(--c-err)' : 'var(--c-ok)');
+        g.appendChild(bar);
+        g.setAttribute('aria-label', thaiDate(sl.day) + ' เปิด ' + bkkTimeHm(sl.rec.first_seen) + ' ถึง ' + bkkTimeHm(sl.rec.last_seen) + ' ออนไลน์สูงสุด ' + sl.rec.max_online + ' เครื่อง' + (hasSilent ? ' เงียบในเวลาทำการ ' + sl.rec.silent_open_mins + ' นาที' : ''));
+      } else {
+        g.setAttribute('aria-label', thaiDate(sl.day) + ' ไม่มีข้อมูล');
+      }
+
+      if (idx % 5 === 0 || idx === 29) {
+        var dl = document.createElementNS(NS, 'text');
+        dl.setAttribute('x', String(Math.round(cx)));
+        dl.setAttribute('y', String(H - 6));
+        dl.setAttribute('text-anchor', 'middle');
+        dl.setAttribute('font-size', '9');
+        dl.setAttribute('fill', 'currentColor');
+        dl.setAttribute('fill-opacity', isSel ? '1' : '0.68');
+        dl.textContent = Number(sl.day.slice(8, 10)) + '/' + Number(sl.day.slice(5, 7));
+        g.appendChild(dl);
+      }
+
+      var chooseDay = function () {
+        state.presenceHistSelectedDay[sid] = sl.day;
+        drawSiteHistoryBox(host, siteGroup, hist);
+      };
+      g.addEventListener('click', chooseDay);
+      g.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          chooseDay();
+        }
+      });
+      svg.appendChild(g);
+    });
+
+    svgWrap.appendChild(svg);
+    host.appendChild(svgWrap);
+
+    // Selected day detail panel
+    var chosenSlot = slots.find(function (s) { return s.day === selDay; }) || slots[slots.length - 1];
+    var det = el('div', 'hist-day-detail');
+    if (!chosenSlot || !chosenSlot.rec) {
+      det.appendChild(el('strong', '', 'วันที่ ' + thaiDate(selDay) + ' — ไม่มีข้อมูลบันทึกในวันนี้'));
+    } else {
+      var r = chosenSlot.rec;
+      det.appendChild(
+        el(
+          'strong',
+          '',
+          'วันที่ ' + thaiDate(selDay) +
+            ' · เครื่องแรกเปิด ' + bkkTimeHm(r.first_seen) +
+            ' · เครื่องสุดท้าย ' + bkkTimeHm(r.last_seen) +
+            ' · ออนไลน์สูงสุด ' + r.max_online + ' เครื่อง' +
+            (r.silent_open_mins > 0 ? ' · เงียบในเวลาทำการ ' + r.silent_open_mins + ' นาที' : ' · ไม่เงียบในเวลาทำการ')
+        )
+      );
+      var dayMacs = macByDay[selDay] || [];
+      if (dayMacs.length) {
+        var mList = el('div', 'hist-mac-list');
+        dayMacs.forEach(function (m) {
+          var name = m.label || m.device_name || m.mac;
+          mList.appendChild(
+            el('span', 'badge muted', name + ': ' + bkkTimeHm(m.first_seen) + ' - ' + bkkTimeHm(m.last_seen))
+          );
+        });
+        det.appendChild(mList);
+      }
+    }
+    host.appendChild(det);
   }
 
   function openPresenceLabelModal(dev, siteGroup) {

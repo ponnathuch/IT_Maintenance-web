@@ -1670,3 +1670,60 @@ table.grid thead th.sticky-col {
 @media (min-width: 768px) {
   .to-top { bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px)); right: var(--space-6); }
 }
+
+/* ---------- P1: 30-Day Presence History Chart (Liquid Glass) ---------- */
+.hist-box {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--c-line);
+  background: var(--c-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.hist-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.hist-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.hist-svg-wrap {
+  width: 100%;
+  overflow-x: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-s);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+}
+.hist-svg {
+  display: block;
+  width: 100%;
+  min-width: 540px;
+  height: 152px;
+}
+.hist-day-detail {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-s);
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  font-size: var(--fs-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.hist-mac-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 4px;
+}
+.dow-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
