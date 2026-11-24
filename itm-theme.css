@@ -1740,3 +1740,76 @@ table.grid thead th.sticky-col {
 }
 .problem-group-title.is-err { color: var(--c-err); }
 .problem-group-title.is-warn { color: var(--c-warn); }
+
+/* ---------- P5: MA Kanban Board (Mobile-First, Full 1px Border, Liquid Glass) ---------- */
+.kanban-board {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+@media (min-width: 768px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1180px) {
+  .kanban-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.kanban-col {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-m);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 220px;
+  transition: border-color var(--dur-fast) var(--ease-fluid), background var(--dur-fast) var(--ease-fluid);
+}
+.kanban-col.is-drop-target {
+  border-color: var(--c-brand);
+  background: var(--c-brand-soft);
+}
+.kanban-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--c-line);
+  font-size: var(--fs-s);
+}
+.kanban-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.kanban-empty {
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+  color: var(--c-ink-3);
+  font-size: var(--fs-xs);
+}
+.kanban-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-s);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: var(--glass-shadow-sm);
+  transition: transform var(--dur-fast) var(--ease-fluid), border-color var(--dur-fast) var(--ease-fluid);
+}
+.kanban-card[draggable="true"] {
+  cursor: grab;
+}
+.kanban-card.is-dragging {
+  opacity: 0.55;
+}
+.kanban-card.tone-ok { border-color: var(--c-ok-line); }
+.kanban-card.tone-warn { border-color: var(--c-warn-line); }
+.kanban-card.tone-err { border-color: var(--c-err-line); }
+.kanban-card.tone-brand { border-color: var(--c-brand-line); }

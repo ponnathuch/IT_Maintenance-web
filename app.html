@@ -75,7 +75,7 @@
     already_submitted: 'ใบงานนี้ถูกส่งไปแล้ว',
     incomplete_visit: 'กรอกใบงานยังไม่ครบ กรุณาตรวจสอบข้อที่ยังไม่ตอบ',
     missing_resolution: 'กรุณาระบุวิธีแก้ไขก่อนปิดปัญหา',
-    missing_reason: 'กรุณาระบุเหตุผลการยกเลิก',
+    missing_reason: 'กรุณาระบุเหตุผลการเลื่อนหรือยกเลิกแผน',
     missing_owner: 'กรุณาระบุผู้รับผิดชอบหลัก',
     missing_applies_to: 'กรุณาเลือกประเภทเครื่องอย่างน้อย 1 ประเภท',
     bad_location: 'อ่านพิกัดไม่ได้ ใช้รูปแบบ 13.7563, 100.5018 หรือลิงก์ Google Maps แบบเต็ม',
@@ -92,6 +92,7 @@
     year: new Date().getFullYear(),
     ovFilter: 'all',
     ovSearch: '',
+    ovViewMode: 'table', // 'table' | 'kanban_week' | 'kanban_owner'
     ovData: null,
     visitPlanId: null,
     visitData: null,
@@ -1020,6 +1021,21 @@
 
     // Filter Toolbar
     var tb = el('div', 'toolbar');
+    var viewSeg = el('div', 'seg');
+    viewSeg.setAttribute('role', 'group');
+    viewSeg.setAttribute('aria-label', 'สลับมุมมองตารางหรือบอร์ด Kanban');
+    [['table', 'ตารางสัปดาห์'], ['kanban_week', 'บอร์ดสัปดาห์'], ['kanban_owner', 'บอร์ดผู้รับผิดชอบ']].forEach(function (vm) {
+      var b = el('button', '', vm[1]);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', state.ovViewMode === vm[0] ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.ovViewMode = vm[0];
+        renderOverview();
+      });
+      viewSeg.appendChild(b);
+    });
+    tb.appendChild(viewSeg);
+
     var seg = el('div', 'seg');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'กรองชนิดแผน');
@@ -1036,20 +1052,18 @@
     inp.type = 'search';
     inp.placeholder = 'ค้นหารหัสสาขา ชื่อสาขา หรือผู้รับผิดชอบ...';
     inp.value = state.ovSearch;
-    inp.addEventListener('input', function () { state.ovSearch = inp.value; renderOverviewTable(tblHost); });
+    inp.addEventListener('input', function () { state.ovSearch = inp.value; renderOverviewContent(tblHost); });
     tb.appendChild(inp);
     v.appendChild(tb);
 
     var tblHost = el('div');
     v.appendChild(tblHost);
-    renderOverviewTable(tblHost);
+    renderOverviewContent(tblHost);
   }
 
-  function renderOverviewTable(host) {
-    host.innerHTML = '';
-    var data = state.ovData;
+  function filterOverviewPlans(data) {
     var q = state.ovSearch.trim().toLowerCase();
-    var filteredPlans = data.plans.filter(function (p) {
+    return (data.plans || []).filter(function (p) {
       if (state.ovFilter === 'ONSITE' && p.kind !== 'ONSITE') return false;
       if (state.ovFilter === 'REMOTE' && p.kind !== 'REMOTE') return false;
       if (state.ovFilter === 'overdue' && !(p.overdue || p.status === 'missing')) return false;
@@ -1059,6 +1073,20 @@
       }
       return true;
     });
+  }
+
+  function renderOverviewContent(host) {
+    if (state.ovViewMode === 'kanban_week' || state.ovViewMode === 'kanban_owner') {
+      renderOverviewKanban(host, state.ovViewMode);
+    } else {
+      renderOverviewTable(host);
+    }
+  }
+
+  function renderOverviewTable(host) {
+    host.innerHTML = '';
+    var data = state.ovData;
+    var filteredPlans = filterOverviewPlans(data);
 
     if (!filteredPlans.length) {
       var empty = el('div', 'empty-state');
@@ -1132,6 +1160,297 @@
     tbl.appendChild(tbody);
     wrap.appendChild(tbl);
     host.appendChild(wrap);
+  }
+
+  function defaultDateForWeek(monthYm, weekNum) {
+    var dayStr = weekNum === 1 ? '03' : weekNum === 2 ? '10' : weekNum === 3 ? '17' : '24';
+    return monthYm + '-' + dayStr;
+  }
+
+  function collectKnownOwners(data) {
+    var map = {};
+    (data.owners || []).forEach(function (o) {
+      if (o && o.owner) map[String(o.owner).toLowerCase()] = o.owner_name || o.owner;
+    });
+    (data.plans || []).forEach(function (p) {
+      if (p && p.owner) {
+        var u = String(p.owner).toLowerCase();
+        if (!map[u] || map[u] === u) map[u] = p.owner_name || p.owner;
+      }
+    });
+    return Object.keys(map).sort().map(function (u) {
+      return { owner: u, owner_name: map[u] };
+    });
+  }
+
+  function openKanbanMoveModal(plan, mode, targetCol) {
+    var data = state.ovData;
+    var isWeekMode = mode === 'kanban_week';
+    var title = isWeekMode
+      ? 'เลื่อนสัปดาห์แผน ' + plan.site_code + ' (' + plan.kind + ')'
+      : 'เปลี่ยนผู้รับผิดชอบแผน ' + plan.site_code + ' (' + plan.kind + ')';
+
+    openModal(title, function (body, close) {
+      var note = el('div', 'msg warn');
+      note.textContent = 'วันนัดเดิมคือ ' + thaiDate(plan.original_due_date) + ' — การเลื่อนวันนัดจะไม่เปลี่ยนวันคิดคะแนน';
+      body.appendChild(note);
+
+      var chosenWeek = targetCol && isWeekMode ? Number(targetCol.key) : Number(plan.week || 1);
+      var iDue = null;
+      var chosenOwner = targetCol && !isWeekMode ? String(targetCol.owner) : String(plan.owner || '');
+      var owners = collectKnownOwners(data);
+
+      if (isWeekMode) {
+        var fW = el('div', 'field');
+        fW.appendChild(el('span', 'lbl', 'เลือกสัปดาห์เป้าหมาย *'));
+        var wSeg = el('div', 'seg');
+        [[1, 'W1 (1-7)'], [2, 'W2 (8-14)'], [3, 'W3 (15-21)'], [4, 'W4 (22+)']].forEach(function (w) {
+          var b = el('button', '', w[1]);
+          b.type = 'button';
+          b.setAttribute('aria-pressed', chosenWeek === w[0] ? 'true' : 'false');
+          b.addEventListener('click', function () {
+            chosenWeek = w[0];
+            [].forEach.call(wSeg.children, function (c, idx) {
+              c.setAttribute('aria-pressed', (idx + 1) === w[0] ? 'true' : 'false');
+            });
+            if (iDue) iDue.value = defaultDateForWeek(data.month, chosenWeek);
+          });
+          wSeg.appendChild(b);
+        });
+        fW.appendChild(wSeg);
+        body.appendChild(fW);
+
+        var fDue = el('label', 'field');
+        fDue.appendChild(el('span', 'lbl', 'วันนัดตรวจใหม่ (YYYY-MM-DD) *'));
+        iDue = el('input', 'input');
+        iDue.type = 'date';
+        iDue.value = chosenWeek !== Number(plan.week)
+          ? defaultDateForWeek(data.month, chosenWeek)
+          : plan.due_date;
+        fDue.appendChild(iDue);
+        body.appendChild(fDue);
+      } else {
+        var fOwn = el('div', 'field');
+        fOwn.appendChild(el('span', 'lbl', 'เลือกผู้รับผิดชอบหลัก (จากรายชื่อในระบบ) *'));
+        var ownOpts = owners.map(function (o) {
+          return { value: o.owner, label: o.owner_name + ' (' + o.owner + ')' };
+        });
+        if (!ownOpts.length) {
+          ownOpts.push({ value: chosenOwner, label: (plan.owner_name || chosenOwner) + ' (' + chosenOwner + ')' });
+        }
+        var ownSel = makeSelect(ownOpts, chosenOwner, function (nv) {
+          chosenOwner = nv;
+        }, 'เลือกผู้รับผิดชอบ');
+        fOwn.appendChild(ownSel);
+        body.appendChild(fOwn);
+      }
+
+      var fReason = el('label', 'field');
+      fReason.appendChild(el('span', 'lbl', 'เหตุผลการเปลี่ยนแปลง (บังคับกรอก บันทึกลง itm_log) *'));
+      var iReason = el('input', 'input');
+      iReason.placeholder = isWeekMode ? 'เช่น สาขาขอเลื่อนวันเข้าตรวจ' : 'เช่น สลับเวรผู้รับผิดชอบ';
+      fReason.appendChild(iReason);
+      body.appendChild(fReason);
+
+      var errEl = el('div', 'fielderr');
+      body.appendChild(errEl);
+
+      var act = el('div', 'row-actions');
+      act.appendChild(btn('ยืนยันบันทึก', 'primary', function () {
+        errEl.textContent = '';
+        var reason = iReason.value.trim();
+        if (!reason) {
+          errEl.textContent = 'กรุณาระบุเหตุผลก่อนบันทึก';
+          iReason.focus();
+          return;
+        }
+        var payload = { plan_id: plan.id, reason: reason };
+        if (isWeekMode) {
+          if (!iDue.value) {
+            errEl.textContent = 'กรุณาระบุวันนัดตรวจใหม่';
+            return;
+          }
+          payload.due_date = iDue.value;
+        } else {
+          var foundOwn = owners.find(function (o) { return o.owner === chosenOwner; });
+          payload.owner = chosenOwner;
+          payload.owner_name = foundOwn ? foundOwn.owner_name : chosenOwner;
+        }
+        api('plan_update', payload).then(function () {
+          close();
+          showMsg('บันทึกการปรับแผนเรียบร้อยแล้ว', 'ok');
+          loadOverview();
+        }).catch(function (e) {
+          errEl.textContent = e.message;
+        });
+      }));
+      body.appendChild(act);
+      iReason.focus();
+    });
+  }
+
+  function renderOverviewKanban(host, mode) {
+    host.innerHTML = '';
+    var data = state.ovData;
+    var filteredPlans = filterOverviewPlans(data);
+    if (!filteredPlans.length) {
+      var empty = el('div', 'empty-state');
+      empty.appendChild(el('h2', '', 'ไม่มีแผน MA ที่ตรงกับตัวกรอง'));
+      empty.appendChild(el('p', '', 'เปลี่ยนตัวกรองด้านบน หรือเปลี่ยนเดือนเพื่อดูแผนอื่น'));
+      host.appendChild(empty);
+      return;
+    }
+
+    var isWeekMode = mode === 'kanban_week';
+    var columns = [];
+    var colMap = {};
+
+    if (isWeekMode) {
+      [
+        { key: '1', title: 'สัปดาห์ W1 (1-7)' },
+        { key: '2', title: 'สัปดาห์ W2 (8-14)' },
+        { key: '3', title: 'สัปดาห์ W3 (15-21)' },
+        { key: '4', title: 'สัปดาห์ W4 (22+)' }
+      ].forEach(function (c) {
+        var colObj = { key: c.key, title: c.title, items: [] };
+        columns.push(colObj);
+        colMap[c.key] = colObj;
+      });
+      filteredPlans.forEach(function (p) {
+        var k = String(p.week || 1);
+        if (!colMap[k]) colMap[k] = columns[0];
+        colMap[k].items.push(p);
+      });
+    } else {
+      var owners = collectKnownOwners(data);
+      owners.forEach(function (o) {
+        var colObj = { key: o.owner, owner: o.owner, owner_name: o.owner_name, title: o.owner_name + ' (' + o.owner + ')', items: [] };
+        columns.push(colObj);
+        colMap[o.owner] = colObj;
+      });
+      filteredPlans.forEach(function (p) {
+        var u = String(p.owner || '').toLowerCase();
+        if (!colMap[u]) {
+          var colObj = { key: u, owner: u, owner_name: p.owner_name || u, title: (p.owner_name || u) + ' (' + u + ')', items: [] };
+          columns.push(colObj);
+          colMap[u] = colObj;
+        }
+        colMap[u].items.push(p);
+      });
+      columns = columns.filter(function (c) {
+        return c.items.length > 0 || (state.sess && state.sess.isAdmin);
+      });
+    }
+
+    if (state.sess && state.sess.isAdmin) {
+      var hint = el('p', 'page-sub', isWeekMode
+        ? 'ผู้ดูแลระบบสามารถลากการ์ดข้ามสัปดาห์ หรือกดปุ่ม "เลื่อนสัปดาห์" บนการ์ดเพื่อระบุเหตุผลเลื่อนวันนัด (ไม่เปลี่ยนวันคิดคะแนนเดิม)'
+        : 'ผู้ดูแลระบบสามารถลากการ์ดข้ามคอลัมน์ หรือกดปุ่ม "เปลี่ยนผู้รับผิดชอบ" เพื่อมอบหมายงานใหม่พร้อมระบุเหตุผล');
+      hint.style.marginBottom = '10px';
+      host.appendChild(hint);
+    }
+
+    var board = el('div', 'kanban-board');
+    columns.forEach(function (col) {
+      var colEl = el('section', 'kanban-col');
+      colEl.setAttribute('data-col-key', col.key);
+
+      var ch = el('div', 'kanban-col-head');
+      ch.appendChild(el('strong', '', col.title));
+      ch.appendChild(el('span', 'badge muted', col.items.length + ' แผน'));
+      colEl.appendChild(ch);
+
+      var cb = el('div', 'kanban-col-body');
+      if (state.sess && state.sess.isAdmin) {
+        colEl.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          colEl.classList.add('is-drop-target');
+        });
+        colEl.addEventListener('dragleave', function () {
+          colEl.classList.remove('is-drop-target');
+        });
+        colEl.addEventListener('drop', function (e) {
+          e.preventDefault();
+          colEl.classList.remove('is-drop-target');
+          var rawId = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+          var pid = Number(rawId);
+          var plan = (data.plans || []).find(function (x) { return Number(x.id) === pid; });
+          if (!plan || plan.cancelled || plan.status === 'submitted' || plan.status === 'late') return;
+          if (isWeekMode && String(plan.week) === col.key) return;
+          if (!isWeekMode && String(plan.owner || '').toLowerCase() === col.key) return;
+          openKanbanMoveModal(plan, mode, col);
+        });
+      }
+
+      if (!col.items.length) {
+        cb.appendChild(el('div', 'kanban-empty', 'ไม่มีแผนในคอลัมน์นี้'));
+      } else {
+        col.items.forEach(function (p) {
+          var st = statusInfo(p);
+          var canMove = state.sess && state.sess.isAdmin && !p.cancelled && p.status !== 'submitted' && p.status !== 'late';
+          var card = el('div', 'kanban-card tone-' + st.badge);
+          card.setAttribute('data-plan-id', String(p.id));
+          if (canMove) {
+            card.draggable = true;
+            card.addEventListener('dragstart', function (e) {
+              if (e.dataTransfer) {
+                e.dataTransfer.setData('text/plain', String(p.id));
+                e.dataTransfer.effectAllowed = 'move';
+              }
+              card.classList.add('is-dragging');
+            });
+            card.addEventListener('dragend', function () {
+              card.classList.remove('is-dragging');
+            });
+          }
+
+          var ih = el('div', 'item-head');
+          var it = el('div');
+          it.appendChild(el('span', 'site-code', p.site_code + ' · ' + p.kind));
+          it.appendChild(el('h4', 'item-title', p.site_name));
+          ih.appendChild(it);
+          ih.appendChild(el('span', 'badge ' + st.badge, st.text));
+          card.appendChild(ih);
+
+          var meta = el('div', 'item-meta');
+          meta.appendChild(el('span', '', 'นัด: ' + thaiDate(p.due_date) + ' (W' + p.week + ')'));
+          if (p.rescheduled) {
+            meta.appendChild(el('span', '', 'เดิม: ' + thaiDate(p.original_due_date)));
+          }
+          meta.appendChild(el('span', '', 'ผู้รับผิดชอบ: ' + (p.owner_name || p.owner)));
+          var openCnt = data.open_issues_by_site[p.site_id] || 0;
+          if (openCnt > 0) {
+            meta.appendChild(el('span', 'badge warn', 'ปัญหาค้าง ' + openCnt));
+          }
+          if (p.kind === 'REMOTE' && data.site_presence && data.site_presence[p.site_id]) {
+            var sp = data.site_presence[p.site_id];
+            if (sp.total > 0) {
+              var spTone = !data.collector_ok ? 'muted' : (sp.online === 0 ? 'err' : 'ok');
+              var spText = !data.collector_ok ? 'ออนไลน์ -/' + sp.total : ('ออนไลน์ ' + sp.online + '/' + sp.total);
+              meta.appendChild(el('span', 'badge ' + spTone, spText));
+            }
+          }
+          card.appendChild(meta);
+
+          var act = el('div', 'row-actions');
+          if (!p.cancelled) {
+            var bLbl = p.status === 'submitted' || p.status === 'late' ? 'ดูใบงาน' : p.status === 'in_progress' ? 'ทำต่อ' : 'เปิดใบงาน';
+            act.appendChild(btn(bLbl, 'sm', function () { openVisit(p.id); }));
+          }
+          if (canMove) {
+            act.appendChild(btn(isWeekMode ? 'เลื่อนสัปดาห์' : 'เปลี่ยนผู้รับผิดชอบ', 'sm', function () {
+              openKanbanMoveModal(p, mode, null);
+            }));
+          }
+          card.appendChild(act);
+          cb.appendChild(card);
+        });
+      }
+
+      colEl.appendChild(cb);
+      board.appendChild(colEl);
+    });
+    host.appendChild(board);
   }
 
   function runExportMonth(month) {
@@ -2290,7 +2609,7 @@
       var tdAct = el('td');
       var ra = el('div', 'row-actions'); ra.style.marginTop = '0';
       if (!p.cancelled) {
-        ra.appendChild(btn('เลื่อน / แก้', 'sm', function () { openPlanFormModal(data.sites, p); }));
+        ra.appendChild(btn('เลื่อน / แก้', 'sm', function () { openPlanFormModal(data.sites, p, data.owners); }));
         ra.appendChild(btn('ยกเลิก', 'danger sm', function () { openCancelPlanModal(p); }));
       } else {
         ra.appendChild(el('span', 'page-sub', p.cancel_reason || '-'));
@@ -2304,7 +2623,7 @@
     host.appendChild(wrap);
   }
 
-  function openPlanFormModal(sites, existing) {
+  function openPlanFormModal(sites, existing, ownersList) {
     openModal(existing ? 'เลื่อน / แก้ไขแผน ' + existing.site_code : 'เพิ่มแผน MA ใหม่', function (body, close) {
       if (existing) {
         var note = el('div', 'msg warn');
@@ -2344,13 +2663,35 @@
       var iDue = el('input', 'input'); iDue.type = 'date'; iDue.value = existing ? existing.due_date : (state.year + '-01-15');
       fDue.appendChild(iDue); fg.appendChild(fDue);
 
-      var fOwn = el('label', 'field'); fOwn.appendChild(el('span', 'lbl', 'username ผู้รับผิดชอบหลัก (JT) *'));
-      var iOwn = el('input', 'input'); iOwn.value = existing ? existing.owner : ''; iOwn.placeholder = 'เช่น jakrin';
-      fOwn.appendChild(iOwn); fg.appendChild(fOwn);
+      var iOwn = null, iOwnName = null;
+      var chosenOwner = existing ? existing.owner : '';
+      var chosenOwnerName = existing ? (existing.owner_name || existing.owner) : '';
 
-      var fOwnName = el('label', 'field'); fOwnName.appendChild(el('span', 'lbl', 'ชื่อแสดงผู้รับผิดชอบ'));
-      var iOwnName = el('input', 'input'); iOwnName.value = existing ? (existing.owner_name || '') : ''; iOwnName.placeholder = 'เช่น จักริน';
-      fOwnName.appendChild(iOwnName); fg.appendChild(fOwnName);
+      if (existing && Array.isArray(ownersList) && ownersList.length > 0) {
+        var fOwnSel = el('div', 'field');
+        fOwnSel.appendChild(el('span', 'lbl', 'ผู้รับผิดชอบหลัก (เลือกจากรายชื่อในระบบ) *'));
+        var ownOpts = ownersList.map(function (o) {
+          return { value: o.owner, label: (o.owner_name || o.owner) + ' (' + o.owner + ')' };
+        });
+        if (!ownOpts.some(function (o) { return o.value === chosenOwner; })) {
+          ownOpts.unshift({ value: chosenOwner, label: chosenOwnerName + ' (' + chosenOwner + ')' });
+        }
+        var ownSel = makeSelect(ownOpts, chosenOwner, function (nv) {
+          chosenOwner = nv;
+          var found = ownersList.find(function (o) { return o.owner === nv; });
+          chosenOwnerName = found ? (found.owner_name || found.owner) : nv;
+        }, 'เลือกผู้รับผิดชอบหลัก');
+        fOwnSel.appendChild(ownSel);
+        fg.appendChild(fOwnSel);
+      } else {
+        var fOwn = el('label', 'field'); fOwn.appendChild(el('span', 'lbl', 'username ผู้รับผิดชอบหลัก (JT) *'));
+        iOwn = el('input', 'input'); iOwn.value = existing ? existing.owner : ''; iOwn.placeholder = 'เช่น jakrin';
+        fOwn.appendChild(iOwn); fg.appendChild(fOwn);
+
+        var fOwnName = el('label', 'field'); fOwnName.appendChild(el('span', 'lbl', 'ชื่อแสดงผู้รับผิดชอบ'));
+        iOwnName = el('input', 'input'); iOwnName.value = existing ? (existing.owner_name || '') : ''; iOwnName.placeholder = 'เช่น จักริน';
+        fOwnName.appendChild(iOwnName); fg.appendChild(fOwnName);
+      }
 
       var fHelp = el('label', 'field'); fHelp.appendChild(el('span', 'lbl', 'ผู้ช่วย (คั่นด้วยจุลภาค)'));
       var iHelp = el('input', 'input'); iHelp.value = existing ? (existing.helpers || []).join(', ') : '';
@@ -2359,18 +2700,31 @@
 
       var iReason = null;
       if (existing) {
-        var fR = el('label', 'field'); fR.appendChild(el('span', 'lbl', 'เหตุผลการแก้ไข / เลื่อน (บันทึกในประวัติ)'));
-        iReason = el('input', 'input'); fR.appendChild(iReason); body.appendChild(fR);
+        var fR = el('label', 'field'); fR.appendChild(el('span', 'lbl', 'เหตุผลการแก้ไข / เลื่อน (บังคับกรอกเมื่อเลื่อนวันนัด) *'));
+        iReason = el('input', 'input');
+        iReason.placeholder = 'เช่น สาขาขอเลื่อนวันเข้าตรวจ';
+        fR.appendChild(iReason); body.appendChild(fR);
       }
+
+      var errEl = el('div', 'fielderr');
+      body.appendChild(errEl);
 
       var act = el('div', 'row-actions');
       act.appendChild(btn('บันทึกแผน', 'primary', function () {
+        errEl.textContent = '';
+        if (existing && iDue.value !== existing.due_date && (!iReason || !iReason.value.trim())) {
+          errEl.textContent = 'กรุณาระบุเหตุผลการเลื่อนวันนัด';
+          if (iReason) iReason.focus();
+          return;
+        }
         var helpers = iHelp.value.split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+        var finalOwner = iOwn ? iOwn.value.trim() : chosenOwner;
+        var finalOwnerName = iOwnName ? iOwnName.value.trim() : chosenOwnerName;
         var req = existing
-          ? api('plan_update', { plan_id: existing.id, due_date: iDue.value, owner: iOwn.value.trim(), owner_name: iOwnName.value.trim(), helpers: helpers, reason: iReason ? iReason.value.trim() : '' })
-          : api('plan_create', { site_id: Number(siteVal), kind: kindVal, due_date: iDue.value, owner: iOwn.value.trim(), owner_name: iOwnName.value.trim(), helpers: helpers });
+          ? api('plan_update', { plan_id: existing.id, due_date: iDue.value, owner: finalOwner, owner_name: finalOwnerName, helpers: helpers, reason: iReason ? iReason.value.trim() : '' })
+          : api('plan_create', { site_id: Number(siteVal), kind: kindVal, due_date: iDue.value, owner: finalOwner, owner_name: finalOwnerName, helpers: helpers });
         req.then(function () { close(); showMsg('บันทึกแผนเรียบร้อยแล้ว', 'ok'); loadPlans(); })
-          .catch(function (e) { showMsg(e.message, 'err'); });
+          .catch(function (e) { errEl.textContent = e.message; });
       }));
       body.appendChild(act);
     });
