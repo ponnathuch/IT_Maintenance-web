@@ -1178,6 +1178,39 @@
     return monthYm + '-' + dayStr;
   }
 
+  // Plan import template: sheet 1 is what the importer reads (A..F), the rest is reference only.
+  function downloadPlanTemplate(data) {
+    var sites = (data.sites || []).filter(function (s) { return s.active !== false; });
+    var owners = collectKnownOwners(data);
+    var y = data.year;
+    var s1 = sites[0] || { code: 'PM075' }, s2 = sites[1] || s1;
+    var o1 = owners[0] || { owner: 'username', owner_name: '' }, o2 = owners[1] || o1;
+    var rows = [
+      ['site_code', 'kind', 'due_date', 'owner', 'owner_name', 'helpers'],
+      [s1.code, 'ONSITE', y + '-01-15', o1.owner, o1.owner_name, o2 === o1 ? '' : o2.owner],
+      [s2.code, 'REMOTE', '15/02/' + (y + 543), o2.owner, '', '']
+    ];
+    var help = [
+      ['คอลัมน์', 'ข้อมูล', 'ต้องมี'],
+      ['A site_code', 'รหัสสาขา ตามชีต "รายชื่อสาขา"', 'ต้องมี'],
+      ['B kind', 'ONSITE หรือ REMOTE', 'ต้องมี'],
+      ['C due_date', 'วันนัด เช่น ' + y + '-01-15 หรือ 15/01/' + (y + 543) + ' (พ.ศ.) หรือช่องวันที่ของ Excel', 'ต้องมี'],
+      ['D owner', 'username ผู้รับผิดชอบหลัก ตามชีต "ผู้รับผิดชอบ"', 'ต้องมี'],
+      ['E owner_name', 'ชื่อที่แสดง (ว่าง = ใช้ username)', 'ไม่บังคับ'],
+      ['F helpers', 'username ผู้ช่วย คั่นด้วย , หรือ ;', 'ไม่บังคับ'],
+      ['', '', ''],
+      ['หมายเหตุ', 'ระบบอ่านเฉพาะชีตแรก แถว 2-3 เป็นตัวอย่าง ลบหรือแก้ก่อนนำเข้า นำเข้าไฟล์เดิมซ้ำจะได้แผนซ้ำ', '']
+    ];
+    var siteRows = [['site_code', 'ชื่อสาขา']].concat(sites.map(function (s) { return [s.code, s.name || '']; }));
+    var ownerRows = [['owner', 'owner_name']].concat(owners.map(function (o) { return [o.owner, o.owner_name]; }));
+    exportXlsx('IT-MA-plan-template.xlsx', [
+      { name: 'แผน', rows: rows },
+      { name: 'คำอธิบาย', rows: help },
+      { name: 'รายชื่อสาขา', rows: siteRows },
+      { name: 'ผู้รับผิดชอบ', rows: ownerRows }
+    ]);
+  }
+
   function collectKnownOwners(data) {
     if (Array.isArray(data.owners) && data.owners.length > 0) {
       return data.owners.map(function (o) {
@@ -2611,6 +2644,7 @@
       impInp.value = '';
     });
     right.appendChild(impInp);
+    right.appendChild(btn('ดาวน์โหลด Template', 'sm', function () { downloadPlanTemplate(data); }, 'download'));
     right.appendChild(btn('นำเข้า Excel', 'sm', function () { impInp.click(); }, 'upload'));
     head.appendChild(right);
     v.appendChild(head);
