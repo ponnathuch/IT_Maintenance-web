@@ -1813,3 +1813,7 @@ table.grid thead th.sticky-col {
 .kanban-card.tone-warn { border-color: var(--c-warn-line); }
 .kanban-card.tone-err { border-color: var(--c-err-line); }
 .kanban-card.tone-brand { border-color: var(--c-brand-line); }
+
+.seg {
+  max-width: 100%;
+}
