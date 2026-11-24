@@ -1141,9 +1141,16 @@
           var st = statusInfo(p);
           var pill = el('button', 'plan-pill ' + st.cls);
           pill.type = 'button';
-          pill.title = p.site_code + ' ' + p.kind + ' · นัด ' + thaiDate(p.due_date) + ' · ' + (p.owner_name || p.owner) + ' · ' + st.text;
+          var spInfo = (p.kind === 'REMOTE' && data.site_presence && data.site_presence[p.site_id]) ? data.site_presence[p.site_id] : null;
+          var spTitle = spInfo && spInfo.total > 0
+            ? ' · ออนไลน์ ' + (data.collector_ok ? spInfo.online : '-') + '/' + spInfo.total
+            : '';
+          pill.title = p.site_code + ' ' + p.kind + ' · นัด ' + thaiDate(p.due_date) + ' · ' + (p.owner_name || p.owner) + ' · ' + st.text + spTitle;
           pill.appendChild(el('span', '', st.short));
           pill.appendChild(el('span', 'k', p.kind === 'ONSITE' ? 'ON' : 'RM'));
+          if (spInfo && spInfo.total > 0) {
+            pill.appendChild(el('span', 'k', (data.collector_ok ? spInfo.online : '-') + '/' + spInfo.total));
+          }
           pill.addEventListener('click', function () {
             if (p.cancelled) {
               showMsg('แผนนี้ถูกยกเลิกแล้ว: ' + (p.cancel_reason || '-'), 'warn');
@@ -1163,15 +1170,18 @@
   }
 
   function defaultDateForWeek(monthYm, weekNum) {
-    var dayStr = weekNum === 1 ? '03' : weekNum === 2 ? '10' : weekNum === 3 ? '17' : '24';
+    var dayStr = weekNum === 1 ? '04' : weekNum === 2 ? '11' : weekNum === 3 ? '18' : '25';
     return monthYm + '-' + dayStr;
   }
 
   function collectKnownOwners(data) {
+    if (Array.isArray(data.owners) && data.owners.length > 0) {
+      return data.owners.map(function (o) {
+        var u = String(o.owner || '').toLowerCase();
+        return { owner: u, owner_name: o.owner_name || u };
+      });
+    }
     var map = {};
-    (data.owners || []).forEach(function (o) {
-      if (o && o.owner) map[String(o.owner).toLowerCase()] = o.owner_name || o.owner;
-    });
     (data.plans || []).forEach(function (p) {
       if (p && p.owner) {
         var u = String(p.owner).toLowerCase();
@@ -1543,6 +1553,14 @@
         meta.appendChild(el('span', '', 'นัดตรวจ: ' + thaiDate(p.due_date)));
         if (p.rescheduled) meta.appendChild(el('span', '', '(วันเดิม ' + thaiDate(p.original_due_date) + ')'));
         meta.appendChild(el('span', '', p.is_owner ? 'ผู้รับผิดชอบหลัก' : 'ผู้ช่วย'));
+        if (p.kind === 'REMOTE' && data.site_presence && data.site_presence[p.site_id]) {
+          var sp = data.site_presence[p.site_id];
+          if (sp.total > 0) {
+            var spTone = !data.collector_ok ? 'muted' : (sp.online === 0 ? 'err' : 'ok');
+            var spText = !data.collector_ok ? 'ออนไลน์ -/' + sp.total : ('ออนไลน์ ' + sp.online + '/' + sp.total);
+            meta.appendChild(el('span', 'badge ' + spTone, spText));
+          }
+        }
         card.appendChild(meta);
 
         var act = el('div', 'row-actions');
@@ -1712,7 +1730,13 @@
       tb.setAttribute('role', 'tab');
       var k = 'dev:' + dev.id;
       tb.setAttribute('aria-selected', state.visitSubTab === k ? 'true' : 'false');
-      tb.textContent = dev.computer_name + ' (' + dev.role + ')';
+      if (dev.presence) {
+        var dotCls = !d.collector_ok ? 'unknown' : (dev.presence.online ? 'online' : 'offline');
+        var dot = el('span', 'p-dot ' + dotCls);
+        dot.style.marginRight = '6px';
+        tb.appendChild(dot);
+      }
+      tb.appendChild(el('span', '', dev.computer_name + ' (' + dev.role + ')'));
       tb.addEventListener('click', function () { state.visitSubTab = k; renderVisitView(); });
       tabs.appendChild(tb);
     });
@@ -1786,7 +1810,19 @@
       dCard.style.marginBottom = '12px';
       var dh = el('div', 'item-head');
       var dl = el('div');
-      dl.appendChild(el('h3', 'item-title', dev.computer_name + ' (' + (ROLE_LABELS[dev.role] || dev.role) + ')'));
+      var dTitleRow = el('div', 'row-actions');
+      dTitleRow.style.marginTop = '0';
+      dTitleRow.appendChild(el('h3', 'item-title', dev.computer_name + ' (' + (ROLE_LABELS[dev.role] || dev.role) + ')'));
+      if (dev.presence) {
+        var prBadgeCls = !d.collector_ok ? 'warn' : (dev.presence.online ? 'ok' : 'muted');
+        var prBadgeTxt = !d.collector_ok
+          ? 'ไม่มีข้อมูลตัวรับ'
+          : (dev.presence.online ? 'ออนไลน์ตอนนี้' : 'ไม่เห็น ' + thaiRelativeTime(dev.presence.last_seen));
+        dTitleRow.appendChild(el('span', 'badge ' + prBadgeCls, prBadgeTxt));
+      } else {
+        dTitleRow.appendChild(el('span', 'badge muted', 'ยังไม่ผูก MAC ไฟร์วอลล์'));
+      }
+      dl.appendChild(dTitleRow);
       var specs = [dev.model, dev.cpu, dev.ram ? 'RAM ' + dev.ram : '', dev.windows_version, dev.ip ? 'IP ' + dev.ip : '', dev.fixed_asset_no ? 'FA ' + dev.fixed_asset_no : ''].filter(Boolean).join(' · ');
       dl.appendChild(el('p', 'page-sub', specs || 'ยังไม่ได้ระบุสเปกเครื่อง'));
       dh.appendChild(dl);
@@ -2094,15 +2130,37 @@
         body.appendChild(el('div', 'page-sub', 'เลือกจากเครื่องเดิมของสาขานี้ (เติมสเปกเดิมให้อัตโนมัติ)'));
         var qRow = el('div', 'row-actions');
         avail.forEach(function (sd) {
-          qRow.appendChild(btn(sd.computer_name + ' (' + sd.role + ')', 'sm', function () {
+          var prTxt = sd.presence
+            ? (!d.collector_ok ? ' · ไม่มีข้อมูล' : (sd.presence.online ? ' · ออนไลน์' : ' · ออฟไลน์'))
+            : '';
+          var b = btn(sd.computer_name + ' (' + sd.role + prTxt + ')', 'sm', function () {
             api('visit_add_device', Object.assign({ visit_id: d.visit.id, device_id: sd.id }, sd)).then(function (res) {
               close();
               if (res.visit_device) state.visitSubTab = 'dev:' + res.visit_device.id;
               openVisit(d.plan.id);
             }).catch(function (e) { showMsg(e.message, 'err'); });
-          }, 'plus'));
+          }, 'plus');
+          qRow.appendChild(b);
         });
         body.appendChild(qRow);
+      }
+
+      if (Array.isArray(d.unregistered_presence) && d.unregistered_presence.length > 0) {
+        var unregTitle = el('div', 'page-sub', 'เครื่องใหม่ที่พบจากไฟร์วอลล์ในสาขานี้แต่ยังไม่ลงทะเบียน (' + d.unregistered_presence.length + ' เครื่อง)');
+        unregTitle.style.marginTop = '10px';
+        body.appendChild(unregTitle);
+        var uRow = el('div', 'row-actions');
+        d.unregistered_presence.forEach(function (up) {
+          var lbl = (up.label || up.ip) + ' (MAC ' + up.mac + (up.online ? ' · ออนไลน์' : '') + ')';
+          uRow.appendChild(btn(lbl, 'sm', function () {
+            var compInp = body.querySelector('input[data-spec-field="computer_name"]');
+            var ipInp = body.querySelector('input[data-spec-field="ip"]');
+            if (compInp && !compInp.value) compInp.value = up.label || (d.site.code + '-PC');
+            if (ipInp) ipInp.value = up.ip;
+            if (compInp) compInp.focus();
+          }, 'monitor'));
+        });
+        body.appendChild(uRow);
       }
 
       body.appendChild(el('h3', 'item-title', 'หรือกรอกข้อมูลเครื่องใหม่'));
@@ -2164,6 +2222,7 @@
       var wrap = el('label', 'field');
       wrap.appendChild(el('span', 'lbl', f[1]));
       var inp = el('input', 'input');
+      inp.setAttribute('data-spec-field', f[0]);
       inp.value = existing ? (existing[f[0]] || '') : '';
       inpMap[f[0]] = inp;
       wrap.appendChild(inp);
@@ -2509,7 +2568,7 @@
     yNav.appendChild(el('span', 'm-lbl', 'ปี ' + (data.year + 543)));
     yNav.appendChild(btn('', 'sm', function () { state.year++; loadPlans(); }, 'chevRight'));
     right.appendChild(yNav);
-    right.appendChild(btn('เพิ่มแผน', 'primary sm', function () { openPlanFormModal(data.sites, null); }, 'plus'));
+    right.appendChild(btn('เพิ่มแผน', 'primary sm', function () { openPlanFormModal(data.sites, null, data.owners); }, 'plus'));
     right.appendChild(btn('คัดลอกครึ่งปีแรก -> หลัง', 'sm', function () {
       if (!confirm('คัดลอกแผนครึ่งปีแรก (ม.ค.-มิ.ย.) ไปครึ่งปีหลัง (+6 เดือน) ของปี ' + (data.year + 543) + ' หรือไม่')) return;
       api('plan_copy_half', { year: data.year }).then(function (res) {
@@ -2664,16 +2723,18 @@
       fDue.appendChild(iDue); fg.appendChild(fDue);
 
       var iOwn = null, iOwnName = null;
-      var chosenOwner = existing ? existing.owner : '';
-      var chosenOwnerName = existing ? (existing.owner_name || existing.owner) : '';
+      var chosenOwner = existing ? existing.owner : (Array.isArray(ownersList) && ownersList[0] ? ownersList[0].owner : '');
+      var chosenOwnerName = existing
+        ? (existing.owner_name || existing.owner)
+        : (Array.isArray(ownersList) && ownersList[0] ? (ownersList[0].owner_name || ownersList[0].owner) : '');
 
-      if (existing && Array.isArray(ownersList) && ownersList.length > 0) {
+      if (Array.isArray(ownersList) && ownersList.length > 0) {
         var fOwnSel = el('div', 'field');
         fOwnSel.appendChild(el('span', 'lbl', 'ผู้รับผิดชอบหลัก (เลือกจากรายชื่อในระบบ) *'));
         var ownOpts = ownersList.map(function (o) {
           return { value: o.owner, label: (o.owner_name || o.owner) + ' (' + o.owner + ')' };
         });
-        if (!ownOpts.some(function (o) { return o.value === chosenOwner; })) {
+        if (chosenOwner && !ownOpts.some(function (o) { return o.value === chosenOwner; })) {
           ownOpts.unshift({ value: chosenOwner, label: chosenOwnerName + ' (' + chosenOwner + ')' });
         }
         var ownSel = makeSelect(ownOpts, chosenOwner, function (nv) {
@@ -3439,7 +3500,8 @@
         first_today: s.first_today,
         devices: matchingDevs,
         allDevices: visDevs,
-        site_devices: s.site_devices || []
+        site_devices: s.site_devices || [],
+        stale_inventory: s.stale_inventory || []
       });
     });
 
@@ -3644,6 +3706,11 @@
       });
       alBox.appendChild(alRows);
       v.appendChild(alBox);
+    }
+
+    if (state.sess && state.sess.isAdmin) {
+      var invPanel = renderInventoryHealthPanel(data);
+      if (invPanel) v.appendChild(invPanel);
     }
 
     // KPI Row
@@ -4014,6 +4081,11 @@
           rndTag.style.marginLeft = '6px';
           titleLine.appendChild(rndTag);
         }
+        if (!d.device_id && d.suggested_device) {
+          var sugTag = el('span', 'badge warn', 'แนะนำให้ผูกกับ ' + d.suggested_device.computer_name + ' (' + d.suggested_device.role + ')');
+          sugTag.style.marginLeft = '6px';
+          titleLine.appendChild(sugTag);
+        }
         info.appendChild(titleLine);
 
         var subLine = el('div', 'dev-mono');
@@ -4031,6 +4103,23 @@
         row.appendChild(left);
 
         var actions = el('div', 'row-actions');
+        if (state.sess && state.sess.isAdmin && !d.device_id && d.suggested_device) {
+          actions.appendChild(btn('ยืนยันผูก', 'primary sm', function () {
+            api('presence_label', {
+              mac: d.mac,
+              device_id: d.suggested_device.id,
+              label: d.label || d.suggested_device.computer_name
+            }).then(function () {
+              showMsg('ผูก MAC ' + d.mac + ' กับ ' + d.suggested_device.computer_name + ' เรียบร้อยแล้ว', 'ok');
+              loadPresence(false);
+            }).catch(function (e) { showMsg(e.message, 'err'); });
+          }, 'check'));
+        }
+        if (state.sess && state.sess.isAdmin && chosen.site_id && !d.device_id && !d.random_mac) {
+          actions.appendChild(btn('ลงทะเบียนเข้าสาขานี้', 'sm', function () {
+            openRegisterPresenceDeviceModal(d, chosen);
+          }, 'plus'));
+        }
         actions.appendChild(btn('ตั้งชื่อ / ผูกเครื่อง', 'sm', function () {
           openPresenceLabelModal(d, chosen);
         }));
@@ -4045,7 +4134,178 @@
       });
     }
 
+    if (chosen.stale_inventory && chosen.stale_inventory.length > 0) {
+      var staleBox = el('div', 'hist-box');
+      staleBox.appendChild(el('strong', '', 'เครื่องในทะเบียนสาขานี้ที่ไม่เห็นเกิน 30 วัน (' + chosen.stale_inventory.length + ' เครื่อง)'));
+      var staleList = el('div', 'hist-mac-list');
+      chosen.stale_inventory.forEach(function (st) {
+        staleList.appendChild(el('span', 'badge warn', st.computer_name + ' (' + st.role + ') · เห็นล่าสุด ' + thaiRelativeTime(st.last_seen, state.presenceData.now)));
+      });
+      staleBox.appendChild(staleList);
+      secCard.appendChild(staleBox);
+    }
+
     detailHost.appendChild(secCard);
+  }
+
+  function openRegisterPresenceDeviceModal(devRow, siteGroup) {
+    openModal('ลงทะเบียนเครื่องใหม่เข้าสาขา ' + siteGroup.code, function (body, close) {
+      body.appendChild(el('p', 'page-sub', 'MAC ' + devRow.mac + ' · IP ' + devRow.ip + ' (' + devRow.iface + ')'));
+      var roleVal = 'POS';
+      var fRole = el('div', 'field');
+      fRole.appendChild(el('span', 'lbl', 'ประเภทเครื่อง *'));
+      var rSeg = el('div', 'seg');
+      ROLES.forEach(function (r) {
+        var b = el('button', '', ROLE_LABELS[r]);
+        b.type = 'button';
+        b.setAttribute('aria-pressed', roleVal === r ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          roleVal = r;
+          [].forEach.call(rSeg.children, function (c, i) {
+            c.setAttribute('aria-pressed', ROLES[i] === r ? 'true' : 'false');
+          });
+        });
+        rSeg.appendChild(b);
+      });
+      fRole.appendChild(rSeg);
+      body.appendChild(fRole);
+
+      var fName = el('label', 'field');
+      fName.appendChild(el('span', 'lbl', 'Computer Name *'));
+      var iName = el('input', 'input');
+      iName.value = devRow.label || (siteGroup.code + '-POS1');
+      fName.appendChild(iName);
+      body.appendChild(fName);
+
+      var errEl = el('div', 'fielderr');
+      body.appendChild(errEl);
+
+      var act = el('div', 'row-actions');
+      act.appendChild(btn('บันทึกและผูก MAC', 'primary', function () {
+        var cname = iName.value.trim();
+        if (!cname) {
+          errEl.textContent = 'กรุณาระบุ Computer Name';
+          iName.focus();
+          return;
+        }
+        api('inventory_register_from_presence', {
+          mac: devRow.mac,
+          site_id: siteGroup.site_id,
+          role: roleVal,
+          computer_name: cname
+        }).then(function () {
+          close();
+          showMsg('ลงทะเบียนเครื่อง ' + cname + ' และผูก MAC เรียบร้อยแล้ว', 'ok');
+          loadPresence(false);
+        }).catch(function (e) { errEl.textContent = e.message; });
+      }));
+      body.appendChild(act);
+      iName.focus();
+    });
+  }
+
+  function renderInventoryHealthPanel(data) {
+    var unregistered = [];
+    var suggested = [];
+    var stale = [];
+    (data.sites || []).forEach(function (s) {
+      if (!s.site_id) return;
+      (s.devices || []).forEach(function (d) {
+        if (d.random_mac || d.device_id) return;
+        unregistered.push({ site: s, dev: d });
+        if (d.suggested_device) suggested.push({ site: s, dev: d });
+      });
+      (s.stale_inventory || []).forEach(function (st) {
+        stale.push({ site: s, item: st });
+      });
+    });
+
+    if (!unregistered.length && !stale.length) return null;
+
+    var box = el('section', 'card');
+    box.style.marginBottom = '12px';
+    var head = el('div', 'item-head');
+    var hLeft = el('div');
+    hLeft.appendChild(el('strong', '', 'สุขภาพทะเบียนเครื่อง (เทียบไฟร์วอลล์กับทะเบียน MA)'));
+    var badges = el('div', 'row-actions');
+    badges.style.marginTop = '4px';
+    if (suggested.length) badges.appendChild(el('span', 'badge warn', 'แนะนำให้ผูกอัตโนมัติ ' + suggested.length + ' เครื่อง'));
+    if (unregistered.length) badges.appendChild(el('span', 'badge brand', 'เครื่องใหม่ยังไม่ลงทะเบียน ' + unregistered.length + ' เครื่อง'));
+    if (stale.length) badges.appendChild(el('span', 'badge muted', 'อาจเลิกใช้ (>30 วัน) ' + stale.length + ' เครื่อง'));
+    hLeft.appendChild(badges);
+    head.appendChild(hLeft);
+
+    var detailWrap = el('div');
+    detailWrap.hidden = !state.presenceInvHealthOpen;
+    var toggleBtn = btn(state.presenceInvHealthOpen ? 'ซ่อนรายการ' : 'ดูรายการ (' + (unregistered.length + stale.length) + ')', 'sm', function () {
+      state.presenceInvHealthOpen = !state.presenceInvHealthOpen;
+      detailWrap.hidden = !state.presenceInvHealthOpen;
+      toggleBtn.querySelector('span').textContent = state.presenceInvHealthOpen ? 'ซ่อนรายการ' : 'ดูรายการ (' + (unregistered.length + stale.length) + ')';
+    });
+    head.appendChild(toggleBtn);
+    box.appendChild(head);
+
+    if (unregistered.length) {
+      var uTitle = el('div', 'problem-group-title');
+      uTitle.style.marginTop = '10px';
+      uTitle.textContent = 'เครื่องใหม่ยังไม่ลงทะเบียนใน itm_devices (' + unregistered.length + ')';
+      detailWrap.appendChild(uTitle);
+      var uRows = el('div', 'problem-rows');
+      unregistered.slice(0, 12).forEach(function (entry) {
+        var s = entry.site, d = entry.dev;
+        var r = el('div', 'problem-row is-partial');
+        var nm = el('span', 'problem-name');
+        nm.appendChild(el('span', 'site-code', s.code));
+        nm.appendChild(document.createTextNode(' ' + (d.label || d.mac) + ' · IP ' + d.ip));
+        if (d.suggested_device) {
+          var sb = el('span', 'badge warn', 'ตรงกับ ' + d.suggested_device.computer_name);
+          sb.style.marginLeft = '6px';
+          nm.appendChild(sb);
+        }
+        r.appendChild(nm);
+        var act = el('div', 'row-actions');
+        act.style.marginTop = '0';
+        if (d.suggested_device) {
+          act.appendChild(btn('ยืนยันผูก', 'primary sm', function () {
+            api('presence_label', {
+              mac: d.mac,
+              device_id: d.suggested_device.id,
+              label: d.label || d.suggested_device.computer_name
+            }).then(function () {
+              showMsg('ผูก MAC ' + d.mac + ' กับ ' + d.suggested_device.computer_name + ' เรียบร้อยแล้ว', 'ok');
+              loadPresence(false);
+            }).catch(function (e) { showMsg(e.message, 'err'); });
+          }));
+        }
+        act.appendChild(btn('ลงทะเบียนเข้าสาขา', 'sm', function () {
+          openRegisterPresenceDeviceModal(d, s);
+        }));
+        r.appendChild(act);
+        uRows.appendChild(r);
+      });
+      detailWrap.appendChild(uRows);
+    }
+
+    if (stale.length) {
+      var sTitle = el('div', 'problem-group-title');
+      sTitle.style.marginTop = '10px';
+      sTitle.textContent = 'เครื่องในทะเบียนที่ไม่เห็นบนไฟร์วอลล์เกิน 30 วัน (' + stale.length + ')';
+      detailWrap.appendChild(sTitle);
+      var sRows = el('div', 'problem-rows');
+      stale.slice(0, 12).forEach(function (entry) {
+        var r = el('div', 'problem-row');
+        var nm = el('span', 'problem-name');
+        nm.appendChild(el('span', 'site-code', entry.site.code));
+        nm.appendChild(document.createTextNode(' ' + entry.item.computer_name + ' (' + entry.item.role + ') · IP ' + (entry.item.ip || '-')));
+        r.appendChild(nm);
+        r.appendChild(el('span', 'problem-state', 'เห็นล่าสุด ' + thaiRelativeTime(entry.item.last_seen, data.now)));
+        sRows.appendChild(r);
+      });
+      detailWrap.appendChild(sRows);
+    }
+
+    box.appendChild(detailWrap);
+    return box;
   }
 
   function bkkMinuteOfDay(iso) {
