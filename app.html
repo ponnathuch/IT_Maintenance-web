@@ -106,9 +106,13 @@
     presenceSearch: '',
     presenceRandomMac: false,
     presenceSelectedKey: null,
-    presenceViewMode: 'map', // 'map' | 'list'
+    presenceViewMode: 'map', // 'map' | 'list' | 'security'
     presenceHistCache: {},
     presenceHistSelectedDay: {},
+    presenceInvHealthOpen: false,
+    securityDays: 7,
+    securitySiteId: '',
+    securityData: null,
     navSeq: 0
   };
 
@@ -3038,6 +3042,57 @@
       }));
       aCard.appendChild(actA);
       v.appendChild(aCard);
+
+      // P4: security_viewers management (ADMIN only)
+      var secCard = el('div', 'card');
+      secCard.style.marginTop = '14px';
+      secCard.appendChild(el('h3', 'item-title', 'สิทธิ์ดูข้อมูลเว็บที่เข้า / ถูกบล็อก (Content Filtering)'));
+      secCard.appendChild(el('p', 'page-sub', 'ผู้ดูแลระบบ (ADMIN) ดูได้เสมอ · เลือกชื่อผู้ใช้ด้านล่างเพื่ออนุญาตให้ดูเพิ่มเติม (ระบบบันทึก itm_log ทุกครั้งที่มีการเปิดดู)'));
+
+      var curViewers = Array.isArray(data.security_viewers) ? data.security_viewers.slice() : [];
+      var knownUsers = Array.isArray(data.owners) ? data.owners.slice() : [];
+      curViewers.forEach(function (u) {
+        if (!knownUsers.some(function (o) { return o.owner === u; })) {
+          knownUsers.push({ owner: u, owner_name: u });
+        }
+      });
+
+      var viewerPills = el('div', 'dow-pills');
+      viewerPills.style.marginTop = '12px';
+      if (!knownUsers.length) {
+        viewerPills.appendChild(el('span', 'page-sub', 'ยังไม่มีรายชื่อผู้ใช้จากระบบ'));
+      } else {
+        knownUsers.forEach(function (uObj) {
+          var uname = String(uObj.owner || '').toLowerCase();
+          var b = el('button', 'btn sm', (uObj.owner_name || uname) + ' (' + uname + ')');
+          b.type = 'button';
+          var syncV = function () {
+            var on = curViewers.indexOf(uname) !== -1;
+            b.className = 'btn sm' + (on ? ' primary' : '');
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+          };
+          syncV();
+          b.addEventListener('click', function () {
+            var idx = curViewers.indexOf(uname);
+            if (idx === -1) curViewers.push(uname); else curViewers.splice(idx, 1);
+            syncV();
+          });
+          viewerPills.appendChild(b);
+        });
+      }
+      secCard.appendChild(viewerPills);
+
+      var actSec = el('div', 'row-actions');
+      actSec.style.marginTop = '14px';
+      actSec.appendChild(btn('บันทึกสิทธิ์ดูข้อมูลเว็บ', 'primary', function () {
+        api('security_viewers_save', { security_viewers: curViewers }).then(function (res) {
+          data.security_viewers = res.security_viewers;
+          showMsg('บันทึกสิทธิ์ดูข้อมูลเว็บเรียบร้อยแล้ว', 'ok');
+          renderSettings(data);
+        }).catch(function (e) { showMsg(e.message, 'err'); });
+      }));
+      secCard.appendChild(actSec);
+      v.appendChild(secCard);
     }
   }
 
@@ -3662,7 +3717,13 @@
     var modeSeg = el('div', 'seg');
     modeSeg.setAttribute('role', 'group');
     modeSeg.setAttribute('aria-label', 'สลับมุมมองแผนที่หรือรายการ');
-    [['map', 'แผนที่'], ['list', 'มุมมองรายการ']].forEach(function (m) {
+    var modeChoices = [['map', 'แผนที่'], ['list', 'มุมมองรายการ']];
+    if (data.can_view_security) {
+      modeChoices.push(['security', 'เว็บที่เข้า / ถูกบล็อก']);
+    } else if (state.presenceViewMode === 'security') {
+      state.presenceViewMode = 'map';
+    }
+    modeChoices.forEach(function (m) {
       var b = el('button', '', m[1]);
       b.type = 'button';
       b.setAttribute('aria-pressed', state.presenceViewMode === m[0] ? 'true' : 'false');
@@ -3673,9 +3734,19 @@
       modeSeg.appendChild(b);
     });
     hRight.appendChild(modeSeg);
-    hRight.appendChild(btn('รีเฟรช', 'sm', function () { loadPresence(false); }, 'refresh'));
+    hRight.appendChild(btn('รีเฟรช', 'sm', function () {
+      if (state.presenceViewMode === 'security') loadSecurityOverview();
+      else loadPresence(false);
+    }, 'refresh'));
     head.appendChild(hRight);
     v.appendChild(head);
+
+    if (state.presenceViewMode === 'security' && data.can_view_security) {
+      var secHost = el('div');
+      v.appendChild(secHost);
+      renderSecuritySubView(secHost, data);
+      return;
+    }
 
     // Stale collector warning banner (spec 5 & 7.6: must never show all devices as offline)
     if (!summary.collector_ok) {
@@ -4306,6 +4377,171 @@
 
     box.appendChild(detailWrap);
     return box;
+  }
+
+  function loadSecurityOverview() {
+    var req = { days: state.securityDays || 7 };
+    if (state.securitySiteId) req.site_id = Number(state.securitySiteId);
+    api('security_overview', req).then(function (res) {
+      state.securityData = res;
+      if (state.tab === 'devices' && state.presenceViewMode === 'security') {
+        renderPresenceView(false);
+      }
+    }).catch(function (e) { showMsg(e.message, 'err'); });
+  }
+
+  function renderSecuritySubView(host, presenceData) {
+    host.innerHTML = '';
+    var tb = el('div', 'toolbar');
+    var dSeg = el('div', 'seg');
+    [[7, '7 วันล่าสุด'], [30, '30 วันล่าสุด']].forEach(function (d) {
+      var b = el('button', '', d[1]);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', state.securityDays === d[0] ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        state.securityDays = d[0];
+        state.securityData = null;
+        renderSecuritySubView(host, presenceData);
+      });
+      dSeg.appendChild(b);
+    });
+    tb.appendChild(dSeg);
+
+    var siteOpts = [{ value: '', label: 'ทุกสาขา' }];
+    (presenceData.sites || []).forEach(function (s) {
+      if (s.site_id) siteOpts.push({ value: String(s.site_id), label: s.code + ' ' + s.name });
+    });
+    tb.appendChild(makeSelect(siteOpts, String(state.securitySiteId || ''), function (nv) {
+      state.securitySiteId = nv;
+      state.securityData = null;
+      renderSecuritySubView(host, presenceData);
+    }, 'กรองสาขา'));
+    tb.appendChild(el('span', 'badge muted', 'ไม่เก็บ URL เต็มและไม่เก็บชื่อพนักงาน · บันทึกประวัติการเปิดดูใน itm_log'));
+    host.appendChild(tb);
+
+    if (!state.securityData) {
+      host.appendChild(el('div', 'card', 'กำลังโหลดสรุปข้อมูลเว็บ (Content Filtering)...'));
+      loadSecurityOverview();
+      return;
+    }
+
+    var sec = state.securityData;
+    var kpiGrid = el('div', 'kpi-grid');
+    var lead = el('div', 'kpi-lead');
+    var leadTop = el('div', 'kpi-lead-top');
+    var leadL = el('div');
+    leadL.appendChild(el('div', 'badge brand', 'เว็บที่ไม่ใช่เว็บงานปกติ (' + sec.days + ' วัน)'));
+    leadL.appendChild(el('div', 'kpi-num-big', String(sec.total_hits) + ' ครั้ง'));
+    leadTop.appendChild(leadL);
+    var leadR = el('div');
+    leadR.style.textAlign = 'right';
+    leadR.appendChild(el('div', '', 'ถูกบล็อก (Denied) ' + sec.denied_hits + ' ครั้ง'));
+    leadR.appendChild(el('div', 'page-sub', 'อนุญาต (Non-Productive) ' + sec.allowed_hits + ' ครั้ง'));
+    leadTop.appendChild(leadR);
+    lead.appendChild(leadTop);
+    kpiGrid.appendChild(lead);
+
+    var sub = el('div', 'kpi-sub-grid');
+    var mkMini = function (lbl, val, tone) {
+      var box = el('div', 'kpi-mini' + (tone ? ' ' + tone : ''));
+      box.appendChild(el('div', 'k-lbl', lbl));
+      box.appendChild(el('div', 'k-val', val));
+      return box;
+    };
+    sub.appendChild(mkMini('ถูกบล็อก (Denied)', String(sec.denied_hits), sec.denied_hits > 0 ? 'tone-err' : ''));
+    sub.appendChild(mkMini('เข้าเว็บทั่วไป (Allowed)', String(sec.allowed_hits), ''));
+    sub.appendChild(mkMini('จำนวนโดเมน', String(sec.unique_domains || 0), ''));
+    sub.appendChild(mkMini('จำนวนเครื่อง', String(sec.unique_devices || 0), ''));
+    kpiGrid.appendChild(sub);
+    host.appendChild(kpiGrid);
+
+    if (!sec.total_hits) {
+      var emp = el('div', 'empty-state');
+      emp.appendChild(el('h2', '', 'ไม่พบข้อมูลเว็บในกรอบเวลานี้'));
+      emp.appendChild(el('p', '', 'ระบบจะรวบรวมเฉพาะหมวดที่ไม่ใช่เว็บงานปกติ (Productive + Allowed จะถูกข้าม)'));
+      host.appendChild(emp);
+      return;
+    }
+
+    var grid2 = el('div', 'list-grid two');
+    grid2.style.marginTop = '12px';
+
+    // 1. By Category
+    var catCard = el('div', 'card');
+    catCard.appendChild(el('h3', 'item-title', 'สรุปตามหมวดหมู่เว็บ (' + (sec.by_category || []).length + ' หมวด)'));
+    var catWrap = el('div', 'table-wrap');
+    catWrap.style.marginTop = '8px';
+    var catTbl = el('table', 'grid');
+    catTbl.innerHTML = '<thead><tr><th>หมวดหมู่</th><th>ทั้งหมด</th><th>ถูกบล็อก</th><th>โดเมน</th><th>เครื่อง</th></tr></thead>';
+    var catBdy = el('tbody');
+    (sec.by_category || []).slice(0, 15).forEach(function (c) {
+      var tr = el('tr');
+      tr.appendChild(el('td', '', c.category));
+      tr.appendChild(el('td', 'dev-mono', String(c.hits)));
+      var tdDen = el('td');
+      tdDen.appendChild(el('span', 'badge ' + (c.denied_hits > 0 ? 'err' : 'muted'), String(c.denied_hits)));
+      tr.appendChild(tdDen);
+      tr.appendChild(el('td', 'dev-mono', String(c.unique_domains)));
+      tr.appendChild(el('td', 'dev-mono', String(c.unique_devices)));
+      catBdy.appendChild(tr);
+    });
+    catTbl.appendChild(catBdy);
+    catWrap.appendChild(catTbl);
+    catCard.appendChild(catWrap);
+    grid2.appendChild(catCard);
+
+    // 2. By Domain
+    var domCard = el('div', 'card');
+    domCard.appendChild(el('h3', 'item-title', 'โดเมนที่พบบ่อย (' + (sec.by_domain || []).length + ' โดเมน)'));
+    var domWrap = el('div', 'table-wrap');
+    domWrap.style.marginTop = '8px';
+    var domTbl = el('table', 'grid');
+    domTbl.innerHTML = '<thead><tr><th>โดเมน</th><th>หมวด</th><th>การกระทำ</th><th>จำนวนครั้ง</th><th>เครื่อง</th></tr></thead>';
+    var domBdy = el('tbody');
+    (sec.by_domain || []).slice(0, 15).forEach(function (d) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'dev-mono', d.domain));
+      tr.appendChild(el('td', '', d.category));
+      var tdAct = el('td');
+      tdAct.appendChild(el('span', 'badge ' + (d.action === 'Denied' ? 'err' : 'muted'), d.action === 'Denied' ? 'บล็อก' : 'อนุญาต'));
+      tr.appendChild(tdAct);
+      tr.appendChild(el('td', 'dev-mono', String(d.hits)));
+      tr.appendChild(el('td', 'dev-mono', String(d.unique_devices)));
+      domBdy.appendChild(tr);
+    });
+    domTbl.appendChild(domBdy);
+    domWrap.appendChild(domTbl);
+    domCard.appendChild(domWrap);
+    grid2.appendChild(domCard);
+
+    host.appendChild(grid2);
+
+    // 3. By Device (computer_name / label / MAC / IP only — zero employee name)
+    var devCard = el('div', 'card');
+    devCard.style.marginTop = '12px';
+    devCard.appendChild(el('h3', 'item-title', 'สรุปตามเครื่องคอมพิวเตอร์ (' + (sec.by_device || []).length + ' เครื่อง)'));
+    var devWrap = el('div', 'table-wrap');
+    devWrap.style.marginTop = '8px';
+    var devTbl = el('table', 'grid');
+    devTbl.innerHTML = '<thead><tr><th>สาขา</th><th>เครื่อง (Computer Name / MAC)</th><th>ทั้งหมด</th><th>ถูกบล็อก</th><th>โดเมนหลัก</th></tr></thead>';
+    var devBdy = el('tbody');
+    (sec.by_device || []).slice(0, 25).forEach(function (dv) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'site-code', dv.site_code ? (dv.site_code + ' ' + dv.site_name) : 'ยังไม่ผูกสาขา'));
+      var devLabel = (dv.computer_name || dv.label || dv.mac) + (dv.role ? ' (' + dv.role + ')' : '') + ' · ' + dv.mac + (dv.ip ? ' · ' + dv.ip : '');
+      tr.appendChild(el('td', 'dev-mono', devLabel));
+      tr.appendChild(el('td', 'dev-mono', String(dv.hits)));
+      var tdDen = el('td');
+      tdDen.appendChild(el('span', 'badge ' + (dv.denied_hits > 0 ? 'err' : 'muted'), String(dv.denied_hits)));
+      tr.appendChild(tdDen);
+      var topDoms = (dv.top_domains || []).map(function (td) { return td.domain + ' (' + td.hits + ')'; }).join(', ');
+      tr.appendChild(el('td', 'dev-mono', topDoms || '-'));
+      devBdy.appendChild(tr);
+    });
+    devTbl.appendChild(devBdy);
+    devWrap.appendChild(devTbl);
+    devCard.appendChild(devWrap);
+    host.appendChild(devCard);
   }
 
   function bkkMinuteOfDay(iso) {
