@@ -1186,9 +1186,9 @@
     var s1 = sites[0] || { code: 'PM075' }, s2 = sites[1] || s1;
     var o1 = owners[0] || { owner: 'username', owner_name: '' }, o2 = owners[1] || o1;
     var rows = [
-      ['site_code', 'kind', 'due_date', 'owner', 'owner_name', 'helpers'],
-      [s1.code, 'ONSITE', y + '-01-15', o1.owner, o1.owner_name, o2 === o1 ? '' : o2.owner],
-      [s2.code, 'REMOTE', '15/02/' + (y + 543), o2.owner, '', '']
+      ['site_code', 'kind', 'due_date', 'owner', 'owner_name', 'helpers', 'หมายเหตุ'],
+      [s1.code, 'ONSITE', y + '-01-15', o1.owner, o1.owner_name, o2 === o1 ? '' : o2.owner, 'ตัวอย่าง'],
+      [s2.code, 'REMOTE', '15/02/' + (y + 543), o2.owner, '', '', 'ตัวอย่าง']
     ];
     var help = [
       ['คอลัมน์', 'ข้อมูล', 'ต้องมี'],
@@ -1198,8 +1198,9 @@
       ['D owner', 'username ผู้รับผิดชอบหลัก ตามชีต "ผู้รับผิดชอบ"', 'ต้องมี'],
       ['E owner_name', 'ชื่อที่แสดง (ว่าง = ใช้ username)', 'ไม่บังคับ'],
       ['F helpers', 'username ผู้ช่วย คั่นด้วย , หรือ ;', 'ไม่บังคับ'],
+      ['G หมายเหตุ', 'ใส่คำว่า ตัวอย่าง = ระบบข้ามแถวนั้น (แถว 2-3 ไม่ถูกนำเข้า)', 'ไม่บังคับ'],
       ['', '', ''],
-      ['หมายเหตุ', 'ระบบอ่านเฉพาะชีตแรก แถว 2-3 เป็นตัวอย่าง ลบหรือแก้ก่อนนำเข้า นำเข้าไฟล์เดิมซ้ำจะได้แผนซ้ำ', '']
+      ['หมายเหตุ', 'ระบบอ่านเฉพาะชีตแรก นำเข้าไฟล์เดิมซ้ำจะได้แผนซ้ำ', '']
     ];
     var siteRows = [['site_code', 'ชื่อสาขา']].concat(sites.map(function (s) { return [s.code, s.name || '']; }));
     var ownerRows = [['owner', 'owner_name']].concat(owners.map(function (o) { return [o.owner, o.owner_name]; }));
@@ -2624,6 +2625,7 @@
         rows.forEach(function (r, idx) {
           if (idx === 0 && /site|code|สาขา/i.test(r.A || '')) return;
           if (!r.A && !r.B && !r.C) return;
+          if ((r.G || '').trim() === 'ตัวอย่าง') return; // template example rows
           parsed.push({
             site_code: (r.A || '').trim(),
             kind: (r.B || '').trim().toUpperCase(),
@@ -3804,7 +3806,7 @@
       data.recent_alerts.slice(0, 6).forEach(function (ev) {
         var isDown = ev.kind === 'collector_down' || ev.kind === 'site_down';
         var r = el('div', 'problem-row ' + (isDown ? 'is-silent' : 'is-partial'));
-        r.appendChild(el('span', 'badge ' + (isDown ? 'err' : 'ok'), bkkTimeHm(ev.at) + ' น.'));
+        r.appendChild(el('span', 'badge ' + (isDown ? 'err' : 'ok'), bkkTimeHm(ev.at)));
         r.appendChild(el('span', 'problem-name', ev.title + (ev.detail ? ' — ' + ev.detail : '')));
         r.appendChild(el('span', 'badge ' + (ev.line_sent ? 'ok' : 'muted'), ev.line_sent ? 'ส่ง LINE แล้ว' : 'รอส่ง'));
         alRows.appendChild(r);
