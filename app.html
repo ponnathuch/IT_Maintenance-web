@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261123k">
+<link rel="stylesheet" href="itm-theme.css?v=20261124a">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -3487,7 +3487,7 @@
     if (mapModulePromise) return mapModulePromise;
     mapModulePromise = new Promise(function (resolve) {
       var s = document.createElement('script');
-      s.src = 'presence-map.js?v=20261123k';
+      s.src = 'presence-map.js?v=20261124a';
       s.onload = function () { resolve(window.ItmPresenceMap || null); };
       s.onerror = function () { mapModulePromise = null; resolve(null); };
       document.head.appendChild(s);
