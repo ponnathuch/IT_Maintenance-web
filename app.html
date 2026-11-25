@@ -1095,6 +1095,8 @@
   function filterOverviewPlans(data) {
     var q = state.ovSearch.trim().toLowerCase();
     return (data.plans || []).filter(function (p) {
+      // Cancelled plans live in แผน MA only; the overview shows work that is still on.
+      if (p.cancelled) return false;
       if (state.ovFilter === 'ONSITE' && p.kind !== 'ONSITE') return false;
       if (state.ovFilter === 'REMOTE' && p.kind !== 'REMOTE') return false;
       if (state.ovFilter === 'overdue' && !(p.overdue || p.status === 'missing')) return false;
