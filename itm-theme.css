@@ -1774,6 +1774,19 @@ table.wk-grid th.sticky-col { width: 240px; }
   gap: var(--space-1);
   margin-top: 4px;
 }
+/* Modal forms: same gap between every field block. */
+#modalBody { display: flex; flex-direction: column; gap: var(--space-3); }
+/* Multi-select people chips: quiet when off, tinted with a check when on. */
+.pick-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick-pill {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 12px;
+  border: 1px solid var(--c-line-strong); border-radius: 999px; background: transparent;
+  color: var(--c-ink); font: inherit; font-size: var(--fs-s); cursor: pointer;
+}
+.pick-pill > span[aria-hidden] { display: none !important; }
+.pick-pill[aria-pressed="true"] { background: var(--c-brand-soft); border-color: var(--c-brand-line); color: var(--c-brand-strong); font-weight: 600; }
+.pick-pill[aria-pressed="true"] > span[aria-hidden] { display: inline-flex !important; }
+.pick-pill:focus-visible { outline: 2px solid var(--c-brand); outline-offset: 2px; }
 .dow-pills {
   display: flex;
   flex-wrap: wrap;

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125e">
+<link rel="stylesheet" href="itm-theme.css?v=20261125f">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -2927,7 +2927,7 @@
       }
 
       var fg = el('div', 'form-grid two');
-      var fDue = el('label', 'field'); fDue.appendChild(el('span', 'lbl', 'วันนัดตรวจ (YYYY-MM-DD) *'));
+      var fDue = el('label', 'field'); fDue.appendChild(el('span', 'lbl', 'วันนัดตรวจ *'));
       var iDue = el('input', 'input'); iDue.type = 'date'; iDue.value = existing ? existing.due_date : (state.year + '-01-15');
       fDue.appendChild(iDue); fg.appendChild(fDue);
 
@@ -2939,7 +2939,7 @@
 
       if (Array.isArray(ownersList) && ownersList.length > 0) {
         var fOwnSel = el('div', 'field');
-        fOwnSel.appendChild(el('span', 'lbl', 'ผู้รับผิดชอบหลัก (เลือกจากรายชื่อในระบบ) *'));
+        fOwnSel.appendChild(el('span', 'lbl', 'ผู้รับผิดชอบหลัก *'));
         var ownOpts = ownersList.map(function (o) {
           return { value: o.owner, label: (o.owner_name || o.owner) + ' (' + o.owner + ')' };
         });
@@ -2950,6 +2950,7 @@
           chosenOwner = nv;
           var found = ownersList.find(function (o) { return o.owner === nv; });
           chosenOwnerName = found ? (found.owner_name || found.owner) : nv;
+          renderHelpers();
         }, 'เลือกผู้รับผิดชอบหลัก');
         fOwnSel.appendChild(ownSel);
         fg.appendChild(fOwnSel);
@@ -2972,27 +2973,34 @@
         if (!helperUsers.some(function (o) { return o.owner === u; })) helperUsers.push({ owner: u, owner_name: u });
       });
       var fHelp = el('div', 'field');
-      fHelp.appendChild(el('span', 'lbl', 'ผู้ช่วย (กดเลือกได้หลายคน)'));
-      var helpPills = el('div', 'dow-pills');
-      if (!helperUsers.length) helpPills.appendChild(el('span', 'page-sub', 'ยังไม่มีรายชื่อผู้ใช้จาก Job Tracker'));
-      helperUsers.forEach(function (uObj) {
-        var uname = String(uObj.owner || '').toLowerCase();
-        var hb = el('button', 'btn sm', uObj.owner_name || uname);
-        hb.type = 'button';
-        hb.title = uname;
-        var syncH = function () {
-          var on = chosenHelpers.indexOf(uname) !== -1;
-          hb.className = 'btn sm' + (on ? ' primary' : '');
-          hb.setAttribute('aria-pressed', on ? 'true' : 'false');
-        };
-        syncH();
-        hb.addEventListener('click', function () {
-          var idx = chosenHelpers.indexOf(uname);
-          if (idx === -1) chosenHelpers.push(uname); else chosenHelpers.splice(idx, 1);
+      fHelp.appendChild(el('span', 'lbl', 'ผู้ช่วย (เลือกได้หลายคน)'));
+      var helpPills = el('div', 'pick-pills');
+      // The main owner is never offered as a helper; the list redraws when the owner changes.
+      function renderHelpers() {
+        var own = String((iOwn ? iOwn.value : chosenOwner) || '').toLowerCase();
+        var i = chosenHelpers.indexOf(own);
+        if (i !== -1) chosenHelpers.splice(i, 1);
+        helpPills.innerHTML = '';
+        var list = helperUsers.filter(function (o) { return String(o.owner || '').toLowerCase() !== own; });
+        if (!list.length) helpPills.appendChild(el('span', 'page-sub', 'ยังไม่มีรายชื่อผู้ใช้จาก Job Tracker'));
+        list.forEach(function (uObj) {
+          var uname = String(uObj.owner || '').toLowerCase();
+          var hb = el('button', 'pick-pill');
+          hb.type = 'button';
+          hb.title = uname;
+          hb.appendChild(icon('check', 14));
+          hb.appendChild(el('span', '', uObj.owner_name || uname));
+          var syncH = function () { hb.setAttribute('aria-pressed', chosenHelpers.indexOf(uname) !== -1 ? 'true' : 'false'); };
           syncH();
+          hb.addEventListener('click', function () {
+            var idx = chosenHelpers.indexOf(uname);
+            if (idx === -1) chosenHelpers.push(uname); else chosenHelpers.splice(idx, 1);
+            syncH();
+          });
+          helpPills.appendChild(hb);
         });
-        helpPills.appendChild(hb);
-      });
+      }
+      renderHelpers();
       fHelp.appendChild(helpPills);
       body.appendChild(fHelp);
 
