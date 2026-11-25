@@ -863,7 +863,7 @@
             var total = Number(s.total || 0);
             var online = Number(s.online || 0);
             var ratio = total > 0 ? online / total : 0;
-            var isSilent = collectorOk && total > 0 && online === 0;
+            var isSilent = collectorOk && (s.branch_status === 'tunnel_down' || s.isSilent || (!s.branch_status && total > 0 && online === 0));
 
             var status = !collectorOk || total === 0 ? 'none' : isSilent ? 'silent' : ratio >= 0.99 ? 'ok' : 'partial';
             var colorHex = status === 'none' ? pal.stale : pal[status];

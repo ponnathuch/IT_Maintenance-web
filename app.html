@@ -4045,15 +4045,20 @@
       var inOpenHours = typeof s.in_open_hours === 'boolean'
         ? s.in_open_hours
         : (s.site_id ? inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now) : true);
+      var hasRedTunnel = s.tunnel_state === 'up' || s.tunnel_state === 'down';
       var branchStatus = !collectorOk
         ? 'no_data'
-        : totalCnt === 0
-          ? 'empty'
-          : (onlineCnt === 0 && !inOpenHours)
+        : (hasRedTunnel && s.branch_status === 'tunnel_down')
+          ? 'tunnel_down'
+          : (hasRedTunnel && s.branch_status === 'closed')
             ? 'closed'
-            : (onlineCnt === 0 && inOpenHours)
-              ? 'tunnel_down'
-              : (onlineCnt < totalCnt ? 'partial_down' : 'ok');
+            : totalCnt === 0
+              ? 'empty'
+              : (onlineCnt === 0 && !inOpenHours)
+                ? 'closed'
+                : (!hasRedTunnel && onlineCnt === 0 && inOpenHours)
+                  ? 'tunnel_down'
+                  : (onlineCnt < totalCnt ? 'partial_down' : 'ok');
       var isSilent = branchStatus === 'tunnel_down';
       var isClosed = branchStatus === 'closed';
       if (isSilent) silentBranches++;
@@ -4088,6 +4093,8 @@
         hours_note: s.hours_note || '',
         in_open_hours: inOpenHours,
         branch_status: branchStatus,
+        tunnel_state: s.tunnel_state || null,
+        tunnel_since: s.tunnel_since || null,
         ifaces: s.ifaces || [],
         sys_ifaces: s.sys_ifaces || [],
         online: onlineCnt,
@@ -4130,13 +4137,19 @@
       if (s.site_id === null || s.site_id === undefined) return; // unmapped ifaces have their own panel
       var devs = (s.devices || []).filter(function (d) { return showRand || !d.random_mac; });
       var online = devs.filter(function (d) { return d.online; }).length;
-      if (!devs.length || online === devs.length) return;
       var inOpenHours = typeof s.in_open_hours === 'boolean'
         ? s.in_open_hours
         : inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now);
-      if (online === 0 && !inOpenHours) return; // closed outside operating hours is normal
+      var hasRedTunnel = s.tunnel_state === 'up' || s.tunnel_state === 'down';
+      var isRedTunnelDown = hasRedTunnel && s.branch_status === 'tunnel_down';
+      if (!isRedTunnelDown) {
+        if (!devs.length || online === devs.length) return;
+        if (online === 0 && !inOpenHours) return; // closed outside operating hours is normal
+      }
       var lastSeen = '';
       devs.forEach(function (d) { if (d.last_seen > lastSeen) lastSeen = d.last_seen; });
+      var isTunnelDown = isRedTunnelDown || (!hasRedTunnel && online === 0);
+      var downSince = (isRedTunnelDown && s.tunnel_since) ? s.tunnel_since : lastSeen;
       out.push({
         key: siteGroupKey(s),
         code: s.code,
@@ -4144,15 +4157,15 @@
         online: online,
         total: devs.length,
         down: devs.length - online,
-        lastSeen: lastSeen,
-        kind: online === 0 ? 'tunnel_down' : 'partial_down'
+        lastSeen: downSince,
+        kind: isTunnelDown ? 'tunnel_down' : 'partial_down'
       });
     });
     out.sort(function (a, b) {
-      var as = a.online === 0 ? 0 : 1;
-      var bs = b.online === 0 ? 0 : 1;
+      var as = a.kind === 'tunnel_down' ? 0 : 1;
+      var bs = b.kind === 'tunnel_down' ? 0 : 1;
       if (as !== bs) return as - bs;
-      if (as === 0) return String(a.lastSeen).localeCompare(String(b.lastSeen)); // longest silent first
+      if (as === 0) return String(a.lastSeen).localeCompare(String(b.lastSeen)); // longest down first
       return b.down - a.down;
     });
     return out;
@@ -4200,7 +4213,7 @@
         name.appendChild(document.createTextNode(' ' + p.name));
         row.appendChild(name);
         row.appendChild(el('span', 'problem-state', silent
-          ? 'เงียบทั้งสาขา 0/' + p.total + (p.lastSeen ? ' · ล่าสุด ' + bkkTimeHm(p.lastSeen) : '')
+          ? (p.lastSeen ? 'เน็ตสาขาหลุด ตั้งแต่ ' + bkkTimeHm(p.lastSeen) : 'เน็ตสาขาหลุด 0/' + p.total)
           : 'ดับ ' + p.down + ' จาก ' + p.total + ' เครื่อง'));
         row.addEventListener('click', function () {
           state.presenceFilter = 'all';
@@ -4516,10 +4529,14 @@
         bt.appendChild(el('span', 'site-code', s.site_id ? s.code : 'ยังไม่ผูกสาขา'));
         bt.appendChild(el('div', 'item-title', s.name));
         bh.appendChild(bt);
+        var sideDownSince = (s.tunnel_state === 'down' && s.tunnel_since) ? s.tunnel_since : '';
+        if (!sideDownSince && s.isSilent && s.allDevices) {
+          s.allDevices.forEach(function (d) { if (d.last_seen > sideDownSince) sideDownSince = d.last_seen; });
+        }
         var stBadge = !summary.collector_ok
           ? el('span', 'badge warn', 'ไม่มีข้อมูล')
           : s.isSilent
-            ? el('span', 'badge err', 'เงียบ 0/' + s.total)
+            ? el('span', 'badge err', sideDownSince ? 'เน็ตสาขาหลุด ตั้งแต่ ' + bkkTimeHm(sideDownSince) : 'เน็ตสาขาหลุด 0/' + s.total)
             : s.isClosed
               ? el('span', 'badge muted', 'ปิดร้าน 0/' + s.total)
               : el('span', 'badge ' + (s.online > 0 ? 'ok' : 'muted'), s.online + '/' + s.total);
@@ -4576,6 +4593,10 @@
       it.appendChild(el('h4', 'item-title', s.name));
       ih.appendChild(it);
 
+      var cardDownSince = (s.tunnel_state === 'down' && s.tunnel_since) ? s.tunnel_since : '';
+      if (!cardDownSince && s.isSilent && s.allDevices) {
+        s.allDevices.forEach(function (d) { if (d.last_seen > cardDownSince) cardDownSince = d.last_seen; });
+      }
       var badgeCls = !summary.collector_ok
         ? 'warn'
         : s.isSilent
@@ -4588,7 +4609,7 @@
       var badgeText = !summary.collector_ok
         ? 'ไม่มีข้อมูล (' + s.total + ')'
         : s.isSilent
-          ? 'เงียบทั้งสาขา 0/' + s.total
+          ? (cardDownSince ? 'เน็ตสาขาหลุด ตั้งแต่ ' + bkkTimeHm(cardDownSince) : 'เน็ตสาขาหลุด 0/' + s.total)
           : s.isClosed
             ? 'ปิดร้าน / นอกเวลา (0/' + s.total + ')'
             : s.online + '/' + s.total + ' ออนไลน์';
@@ -5140,6 +5161,8 @@
     var activeDays = 0;
     var silentDays = 0;
     var totalSilentMins = 0;
+    var totalTunnelDownCount = 0;
+    var totalTunnelDownMins = 0;
     for (var i = 29; i >= 0; i--) {
       var dStr = shiftIsoDay(refToday, -i);
       var rec = dayMap[dStr] || null;
@@ -5149,6 +5172,8 @@
           silentDays++;
           totalSilentMins += rec.silent_open_mins;
         }
+        if (rec.tunnel_down_count > 0) totalTunnelDownCount += rec.tunnel_down_count;
+        if (rec.tunnel_down_mins > 0) totalTunnelDownMins += rec.tunnel_down_mins;
       }
       slots.push({ day: dStr, rec: rec });
     }
@@ -5178,6 +5203,15 @@
         'span',
         'badge ' + (silentDays > 0 ? 'err' : 'brand'),
         silentDays > 0 ? ('เงียบในเวลาทำการ ' + silentDays + ' วัน (รวม ' + totalSilentMins + ' นาที)') : 'ไม่พบช่วงเงียบในเวลาทำการ'
+      )
+    );
+    kpis.appendChild(
+      el(
+        'span',
+        'badge ' + (totalTunnelDownCount > 0 ? 'err' : 'brand'),
+        totalTunnelDownCount > 0
+          ? ('เน็ตหลุด ' + totalTunnelDownCount + ' ครั้ง (รวม ' + totalTunnelDownMins + ' นาที)')
+          : 'ไม่พบเน็ตหลุด'
       )
     );
     head.appendChild(kpis);
@@ -5281,6 +5315,7 @@
         var y1 = yOfMin(fMin);
         var y2 = Math.max(y1 + 6, yOfMin(lMin));
         var hasSilent = sl.rec.silent_open_mins > 0;
+        var hasTunnelDown = sl.rec.tunnel_down_count > 0;
 
         var bar = document.createElementNS(NS, 'rect');
         bar.setAttribute('x', String(bx));
@@ -5288,9 +5323,17 @@
         bar.setAttribute('width', String(barW));
         bar.setAttribute('height', String(y2 - y1));
         bar.setAttribute('rx', '3');
-        bar.setAttribute('fill', hasSilent ? 'var(--c-err)' : 'var(--c-ok)');
+        bar.setAttribute('fill', (hasSilent || hasTunnelDown) ? 'var(--c-err)' : 'var(--c-ok)');
         g.appendChild(bar);
-        g.setAttribute('aria-label', thaiDate(sl.day) + ' เปิด ' + bkkTimeHm(sl.rec.first_seen) + ' ถึง ' + bkkTimeHm(sl.rec.last_seen) + ' ออนไลน์สูงสุด ' + sl.rec.max_online + ' เครื่อง' + (hasSilent ? ' เงียบในเวลาทำการ ' + sl.rec.silent_open_mins + ' นาที' : ''));
+        g.setAttribute(
+          'aria-label',
+          thaiDate(sl.day) +
+            ' เปิด ' + bkkTimeHm(sl.rec.first_seen) +
+            ' ถึง ' + bkkTimeHm(sl.rec.last_seen) +
+            ' ออนไลน์สูงสุด ' + sl.rec.max_online + ' เครื่อง' +
+            (hasSilent ? ' เงียบในเวลาทำการ ' + sl.rec.silent_open_mins + ' นาที' : '') +
+            (hasTunnelDown ? ' เน็ตหลุด ' + sl.rec.tunnel_down_count + ' ครั้ง (' + (sl.rec.tunnel_down_mins || 0) + ' นาที)' : '')
+        );
       } else {
         g.setAttribute('aria-label', thaiDate(sl.day) + ' ไม่มีข้อมูล');
       }
@@ -5339,7 +5382,10 @@
             ' · เครื่องแรกเปิด ' + bkkTimeHm(r.first_seen) +
             ' · เครื่องสุดท้าย ' + bkkTimeHm(r.last_seen) +
             ' · ออนไลน์สูงสุด ' + r.max_online + ' เครื่อง' +
-            (r.silent_open_mins > 0 ? ' · เงียบในเวลาทำการ ' + r.silent_open_mins + ' นาที' : ' · ไม่เงียบในเวลาทำการ')
+            (r.silent_open_mins > 0 ? ' · เงียบในเวลาทำการ ' + r.silent_open_mins + ' นาที' : ' · ไม่เงียบในเวลาทำการ') +
+            ((r.tunnel_down_count > 0 || r.tunnel_down_mins > 0)
+              ? ' · เน็ตหลุด ' + (r.tunnel_down_count || 0) + ' ครั้ง (' + (r.tunnel_down_mins || 0) + ' นาที)'
+              : ' · เน็ตหลุด 0 ครั้ง')
         )
       );
       var dayMacs = macByDay[selDay] || [];
