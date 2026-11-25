@@ -3022,7 +3022,7 @@
     });
     bar.appendChild(segF);
     bar.appendChild(btn('พิมพ์ตาราง', 'sm', function () { window.print(); }, 'printer'));
-    bar.appendChild(btn('ส่งออก Excel', 'sm', function () { exportBoardXlsx(b, kind, period, data.year); }, 'download'));
+    bar.appendChild(btn('ส่งออก Excel', 'sm', function () { exportBoardYearXlsx(data); }, 'download'));
     host.appendChild(bar);
 
     host.appendChild(el('p', 'page-sub no-print', 'ลงแผนแล้ว ' + planned + ' / ' + total + ' สาขา · ส่งแล้ว ' + doneCnt + ' · ยังไม่ลง ' + (total - planned) +
@@ -3108,7 +3108,7 @@
     host.appendChild(el('p', 'page-sub board-legend', '✓ ส่งตรงเวลา · -2 ส่งช้า · -10 ไม่ส่ง · ตัวเลข = วันที่นัด · ช่องเส้นประ = วันนัดเดิมก่อนเลื่อน'));
   }
 
-  function exportBoardXlsx(b, kind, period, year) {
+  function boardSheetRows(b, kind, period, year) {
     var months = [];
     for (var m = period.m0; m <= period.m1; m++) months.push(m);
     var head1 = ['ลำดับ', 'Branch Code', 'ชื่อสาขา', 'ผู้รับผิดชอบ', 'สถานะ'], head2 = ['', '', '', '', ''];
@@ -3127,9 +3127,22 @@
       line.push(boardNote(r));
       rows.push(line);
     });
-    var fname = 'IT-MA-' + kind + '-' + year + '-' + (period.idx + 1) + '.xlsx';
-    exportXlsx(fname, [{ name: kind === 'ONSITE' ? 'Onsite' : 'Remote', rows: rows }]);
-    showMsg('ดาวน์โหลดไฟล์ ' + fname + ' เรียบร้อยแล้ว', 'ok');
+    return rows;
+  }
+
+  // Whole year in one file: one sheet per kind x period (e.g. 4 sheets at 2 visits/year).
+  function exportBoardYearXlsx(data) {
+    var sheets = [];
+    ['ONSITE', 'REMOTE'].forEach(function (kind) {
+      var freq = (data.frequency && data.frequency[kind]) || 2;
+      boardPeriods(freq).forEach(function (period) {
+        var name = (kind === 'ONSITE' ? 'Onsite ' : 'Remote ') + period.label.split(' (')[0];
+        sheets.push({ name: name, rows: boardSheetRows(buildBoard(data, kind, period), kind, period, data.year) });
+      });
+    });
+    var fname = 'IT-MA-ตารางคุมแผน-' + (data.year + 543) + '.xlsx';
+    exportXlsx(fname, sheets);
+    showMsg('ดาวน์โหลดไฟล์ ' + fname + ' (' + sheets.length + ' ชีต) เรียบร้อยแล้ว', 'ok');
   }
 
   // preset (optional, new plans only): { site_id, kind, due_date } from a board cell.
