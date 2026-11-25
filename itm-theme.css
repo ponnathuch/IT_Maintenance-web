@@ -1041,7 +1041,10 @@ table.wk-grid th.sticky-col { width: 240px; }
 .plan-pill.st-pending { background: var(--c-surface); border-color: var(--c-line-strong); color: var(--c-ink-2); }
 .plan-pill.st-overdue { background: var(--c-err-soft); border-color: var(--c-err-line); color: var(--c-err); }
 .plan-pill.st-cancelled { background: var(--c-muted-soft); border-color: var(--c-line); color: var(--c-muted-ink); text-decoration: line-through; }
-.plan-pill .k { font-size: 0.64rem; opacity: 0.85; font-weight: 600; }
+.plan-pill .k { font-size: 0.64rem; opacity: 0.85; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px 4px; }
+.pill-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--c-muted-ink); }
+.pill-dot.all { background: var(--c-ok); }
+.pill-dot.some { background: #d97706; }
 
 /* ---------- Visit Checklist (Mobile Speed-First Liquid Glass) ---------- */
 .visit-sticky {

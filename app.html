@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125h">
+<link rel="stylesheet" href="itm-theme.css?v=20261125i">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -1183,10 +1183,16 @@
             : '';
           pill.title = p.site_code + ' ' + p.kind + ' · นัด ' + thaiDate(p.due_date) + ' · ' + (p.owner_name || p.owner) + ' · ' + st.text + spTitle;
           pill.appendChild(el('span', '', st.short));
-          pill.appendChild(el('span', 'k', p.kind === 'ONSITE' ? 'ON' : 'RM'));
+          // One line: kind, plus for Remote how many of the site's machines are online now (green = all, amber = some, gray = no data).
+          var kLine = el('span', 'k');
           if (spInfo && spInfo.total > 0) {
-            pill.appendChild(el('span', 'k', (data.collector_ok ? spInfo.online : '-') + '/' + spInfo.total));
+            var dot = el('span', 'pill-dot ' + (!data.collector_ok ? 'na' : spInfo.online >= spInfo.total ? 'all' : 'some'));
+            kLine.appendChild(dot);
+            kLine.appendChild(document.createTextNode('RM · ออนไลน์ ' + (data.collector_ok ? spInfo.online : '-') + '/' + spInfo.total));
+          } else {
+            kLine.textContent = p.kind === 'ONSITE' ? 'ON' : 'RM';
           }
+          pill.appendChild(kLine);
           pill.addEventListener('click', function () {
             if (p.cancelled) {
               showMsg('แผนนี้ถูกยกเลิกแล้ว: ' + (p.cancel_reason || '-'), 'warn');
