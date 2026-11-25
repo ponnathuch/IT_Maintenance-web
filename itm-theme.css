@@ -1130,7 +1130,7 @@ table.wk-grid th.sticky-col { width: 240px; }
 }
 .chk-item:last-child { border-bottom: 0; }
 .chk-item.is-abnormal { background: var(--c-err-soft); }
-.chk-label { font-size: var(--fs-s); font-weight: 500; color: var(--c-ink); line-height: 1.4; }
+.chk-label { font-size: var(--fs-m); font-weight: 600; color: var(--c-ink); line-height: 1.45; }
 .chk-btns {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
