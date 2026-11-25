@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125c">
+<link rel="stylesheet" href="itm-theme.css?v=20261125d">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -2016,7 +2016,10 @@
       var secItems = bySec[secName];
       var secCard = el('div', 'sec-card');
       var sh = el('div', 'sec-head');
-      sh.appendChild(el('h3', '', secName + ' (' + secItems.length + ')'));
+      var secDone = secItems.filter(function (it) { return ansMap[scopeKey + '|tpl:' + it.id]; }).length;
+      var h3 = el('h3', '', secName + ' ');
+      h3.appendChild(el('span', 'sec-count', secDone + '/' + secItems.length));
+      sh.appendChild(h3);
 
       if (!locked) {
         sh.appendChild(btn('ปกติทั้งหมด', 'ok sm no-print', function () {
@@ -2068,12 +2071,16 @@
       }
       secCard.appendChild(sh);
 
-      secItems.forEach(function (it) {
+      secItems.forEach(function (it, idx) {
         var ansKey = scopeKey + '|tpl:' + it.id;
         var cur = ansMap[ansKey] || null;
         var row = el('div', 'chk-item' + (cur && cur.result === 'abnormal' ? ' is-abnormal' : ''));
         row.id = 'chk-' + scopeKey.replace(':', '-') + '-' + it.id;
-        row.appendChild(el('div', 'chk-label', it.label));
+        // Number + title like the paper form's ลำดับ column; on wide screens the row becomes title | switch | note.
+        var title = el('div', 'chk-title');
+        title.appendChild(el('span', 'chk-num', String(idx + 1)));
+        title.appendChild(el('div', 'chk-label', it.label));
+        row.appendChild(title);
 
         // 3 large tap buttons: ปกติ / ไม่ปกติ / ไม่เกี่ยว
         var btns = el('div', 'chk-btns');

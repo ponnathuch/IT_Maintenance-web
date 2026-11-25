@@ -1129,12 +1129,43 @@ table.wk-grid th.sticky-col { width: 240px; }
   transition: background var(--dur-fast) var(--ease-fluid);
 }
 .chk-item:last-child { border-bottom: 0; }
-.chk-item.is-abnormal { background: var(--c-err-soft); }
+.chk-item.is-abnormal { background: var(--c-err-soft); box-shadow: inset 3px 0 0 var(--c-err); }
+.chk-title { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.chk-num { flex: none; min-width: 1.5em; font-size: var(--fs-xs); font-weight: 600; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
+.sec-count { font-weight: 500; color: var(--c-ink-2); font-variant-numeric: tabular-nums; }
 .chk-label { font-size: var(--fs-m); font-weight: 600; color: var(--c-ink); line-height: 1.45; }
+/* One segmented switch: buttons share borders, only the outer corners are round. */
 .chk-btns {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
+  gap: 0;
+}
+.chk-btns .chk-btn { border-radius: 0; margin-left: -1px; }
+.chk-btns .chk-btn:first-child { border-radius: var(--radius-s) 0 0 var(--radius-s); margin-left: 0; }
+.chk-btns .chk-btn:last-child { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+.chk-btns .chk-btn[aria-pressed="true"] { position: relative; z-index: 1; }
+/* Phones: title | note on row 1, switch full width on row 2; anything else spans below. */
+.chk-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); }
+.chk-item > .chk-title { grid-column: 1; grid-row: 1; align-self: center; }
+.chk-item > .note-toggle { grid-column: 2; grid-row: 1; align-self: center; }
+.chk-item > .chk-btns { grid-column: 1 / -1; grid-row: 2; }
+.chk-item > :not(.chk-title):not(.chk-btns):not(.note-toggle) { grid-column: 1 / -1; }
+/* Wide screens: title | switch | note on one row (like the PDF table); note, value, photos span below. */
+@media (min-width: 768px) {
+  .chk-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 7.5rem;
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+  }
+  .chk-item > :not(.chk-title):not(.chk-btns):not(.note-toggle) { grid-column: 1 / -1; margin-left: calc(1.5em + var(--space-2)); }
+  .chk-btns { grid-template-columns: repeat(3, minmax(84px, auto)); }
+  .chk-btns .chk-btn { min-height: 36px; padding: 4px 14px; }
+  .chk-item > .chk-title { grid-column: 1; grid-row: 1; }
+  .chk-item > .chk-btns { grid-column: 2; grid-row: 1; }
+  .chk-item > .note-toggle { grid-column: 3; grid-row: 1; align-self: center; justify-self: start; white-space: nowrap; }
 }
 .chk-btn {
   min-height: var(--size-target);
