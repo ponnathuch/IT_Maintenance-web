@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125d">
+<link rel="stylesheet" href="itm-theme.css?v=20261125e">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -1146,7 +1146,10 @@
     ['W1 (1-7)', 'W2 (8-14)', 'W3 (15-21)', 'W4 (22+)'].forEach(function (w) {
       hr.appendChild(el('th', 'w-cell', w));
     });
+    hr.appendChild(el('th', 'own-col', 'ผู้รับผิดชอบ'));
     thead.appendChild(hr);
+    var nameOf = {};
+    (data.owners || []).forEach(function (o) { nameOf[o.owner] = o.owner_name || o.owner; });
     tbl.appendChild(thead);
 
     var tbody = el('tbody');
@@ -1192,6 +1195,24 @@
         });
         tr.appendChild(td);
       });
+      // Who to chase: owners of this site's live plans this month, helpers below in muted text.
+      var owners = [], helpers = [];
+      [1, 2, 3, 4].forEach(function (w) {
+        row.weeks[w].forEach(function (p) {
+          if (p.cancelled) return;
+          var on = p.owner_name || nameOf[p.owner] || p.owner;
+          if (on && owners.indexOf(on) === -1) owners.push(on);
+          (p.helpers || []).forEach(function (h) {
+            var hn = nameOf[h] || h;
+            if (hn && helpers.indexOf(hn) === -1 && owners.indexOf(hn) === -1) helpers.push(hn);
+          });
+        });
+      });
+      var tdOwn = el('td', 'own-col');
+      owners.forEach(function (n) { tdOwn.appendChild(el('span', 'own-name', n)); });
+      if (helpers.length) tdOwn.appendChild(el('span', 'own-help', 'ผู้ช่วย: ' + helpers.join(', ')));
+      if (!owners.length) tdOwn.appendChild(el('span', 'own-help', '-'));
+      tr.appendChild(tdOwn);
       tbody.appendChild(tr);
     });
     tbl.appendChild(tbody);

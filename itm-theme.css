@@ -1002,9 +1002,12 @@ table.grid thead th.sticky-col {
 .site-name { display: block; font-size: var(--fs-xs); color: var(--c-ink-2); line-height: 1.3; }
 .w-cell { text-align: center !important; min-width: 68px; }
 /* Week grid: fixed layout so W1-W4 share the remaining width equally, whatever the cards inside. */
-table.wk-grid { table-layout: fixed; min-width: 520px; }
+table.wk-grid { table-layout: fixed; min-width: 660px; }
+table.wk-grid th.own-col { width: 190px; }
+.own-col .own-name { display: block; font-size: var(--fs-xs); font-weight: 600; color: var(--c-ink); line-height: 1.4; }
+.own-col .own-help { display: block; font-size: var(--fs-xs); color: var(--c-ink-2); line-height: 1.35; }
 table.wk-grid th.sticky-col { width: 240px; }
-@media (max-width: 600px) { table.wk-grid th.sticky-col { width: 140px; } }
+@media (max-width: 600px) { table.wk-grid th.sticky-col { width: 140px; } table.wk-grid th.own-col { width: 130px; } }
 .plan-pill {
   width: 100%;
   min-height: 38px;
