@@ -1699,6 +1699,46 @@ table.wk-grid th.sticky-col { width: 240px; }
   }
   .chk-btn[aria-pressed="false"] { display: none; }
 }
+/* ---------- ตารางคุมแผน (plan board): site rows x W1-W4 per month, printable like the Excel sheet ---------- */
+table.board { table-layout: fixed; width: max-content; min-width: 100%; font-size: var(--fs-xs); }
+table.board th, table.board td { padding: 4px 6px; text-align: center; white-space: nowrap; }
+table.board .board-title { font-size: var(--fs-m); font-weight: 700; color: var(--c-ink); background: var(--c-brand-soft); }
+table.board .bh-0, table.board .bc-num { width: 40px; }
+table.board .bh-1, table.board .bc-code { width: 64px; }
+table.board .bh-2 { width: 220px; }
+table.board .bh-3 { width: 150px; }
+table.board .bh-4 { width: 110px; }
+table.board .bh-note { width: 120px; }
+table.board .bh-week, table.board .bc-wk { width: 30px; padding: 4px 0; }
+table.board .bh-count { font-weight: 500; color: var(--c-ink-2); }
+table.board .bc-name, table.board .bc-people { text-align: left; overflow: hidden; text-overflow: ellipsis; }
+table.board .bc-code { font-family: var(--font-code); font-weight: 700; color: var(--c-brand-strong); }
+table.board .bc-note { text-align: left; color: var(--c-err); overflow: hidden; text-overflow: ellipsis; }
+table.board .bc-status .badge { font-size: 11px; }
+table.board td.bc-wk { cursor: default; font-weight: 700; }
+table.board td.bc-plan { background: var(--c-brand-soft); color: var(--c-brand-strong); cursor: pointer; }
+table.board td.bc-doing { background: var(--c-warn-soft); color: var(--c-warn); cursor: pointer; }
+table.board td.bc-ok { background: var(--c-ok-soft); color: var(--c-ok); cursor: pointer; }
+table.board td.bc-bad { background: var(--c-err); color: #ffffff; cursor: pointer; }
+table.board td.bc-moved { outline: 1px dashed var(--c-line-strong); outline-offset: -3px; }
+table.board td.bc-add { cursor: pointer; }
+table.board td.bc-add:hover { background: var(--c-brand-soft); }
+table.board tr.b-todo .bc-name { color: var(--c-err); }
+.board-legend { margin-top: var(--space-2); }
+@page board { size: A4 landscape; margin: 8mm; }
+@media print {
+  .board-print { page: board; }
+  .board-wrap { overflow: visible !important; border: 0 !important; }
+  table.board { width: 100%; min-width: 0; font-size: 7.5pt; }
+  table.board th, table.board td { padding: 2px 3px; border: 1px solid #777777 !important; }
+  table.board .bh-2 { width: 150px; }
+  table.board .bh-3 { width: 95px; }
+  table.board .bh-4 { width: 70px; }
+  table.board .bh-week, table.board .bc-wk { width: 18px; }
+  table.board td.bc-plan, table.board td.bc-ok, table.board td.bc-doing { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.board td.bc-bad { background: #d92d20 !important; color: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.board tr { break-inside: avoid; }
+}
 .presence-map-legend .legend-note { opacity: 0.75; font-weight: 400; }
 
 /* Floating back-to-top button; sits above the mobile bottom nav */

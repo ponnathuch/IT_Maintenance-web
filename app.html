@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125g">
+<link rel="stylesheet" href="itm-theme.css?v=20261125h">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -111,6 +111,8 @@
     visitSubTab: '', // 'dev:<id>' | 'site' | 'page2'
     issuesFilter: { status: 'open', site_id: '', q: '' },
     plansFilter: { kind: 'ALL', q: '' },
+    planView: 'list',
+    board: { kind: 'ONSITE', month: null, filter: 'ALL' },
     settingsTab: 'sites',
     settingsTplKind: 'ONSITE',
     presenceData: null,
@@ -2819,6 +2821,27 @@
     head.appendChild(right);
     v.appendChild(head);
 
+    // รายการแผน (list) | ตารางคุมแผน (board: every site x week, like the paper control sheet)
+    var vSeg = el('div', 'seg no-print');
+    vSeg.style.marginBottom = 'var(--space-3)';
+    [['list', 'รายการแผน'], ['board', 'ตารางคุมแผน']].forEach(function (k) {
+      var x = el('button', '', k[1]); x.type = 'button';
+      x.setAttribute('aria-pressed', state.planView === k[0] ? 'true' : 'false');
+      x.addEventListener('click', function () { state.planView = k[0]; renderPlans(data); });
+      vSeg.appendChild(x);
+    });
+    v.appendChild(vSeg);
+    if (state.planView === 'board') {
+      if (state.board.month === null) {
+        var td0 = bkkToday();
+        state.board.month = Number(td0.slice(0, 4)) === data.year ? Number(td0.slice(5, 7)) : 1;
+      }
+      var bHost = el('div', 'board-print');
+      v.appendChild(bHost);
+      renderPlanBoard(bHost, data);
+      return;
+    }
+
     var tb = el('div', 'toolbar');
     var seg = el('div', 'seg');
     [['ALL', 'ทั้งหมด'], ['ONSITE', 'Onsite'], ['REMOTE', 'Remote']].forEach(function (k) {
@@ -2890,15 +2913,235 @@
     host.appendChild(wrap);
   }
 
-  function openPlanFormModal(sites, existing, ownersList) {
+  // ---------------- Plan board (ตารางคุมแผน): one row per site, W1-W4 per month, like the paper/Excel sheet ----------------
+  var BOARD_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+  // Visits per year (from settings) -> period length in months; period index 0..freq-1.
+  function boardPeriods(freq) {
+    var len = 12 / freq, out = [];
+    for (var i = 0; i < freq; i++) {
+      var m0 = i * len + 1, m1 = m0 + len - 1;
+      var range = BOARD_MONTHS[m0 - 1] + (len > 1 ? '–' + BOARD_MONTHS[m1 - 1] : '');
+      var name = freq === 1 ? 'ทั้งปี' : freq === 2 ? (i === 0 ? 'ครึ่งปีแรก' : 'ครึ่งปีหลัง') : freq === 4 ? 'ไตรมาส ' + (i + 1) : 'รอบ ' + (i + 1);
+      out.push({ idx: i, m0: m0, m1: m1, label: name + (freq === 1 ? '' : ' (' + range + ')') });
+    }
+    return out;
+  }
+
+  function weekOfIso(iso) {
+    var d = Number(String(iso).slice(8, 10));
+    return d <= 7 ? 1 : d <= 14 ? 2 : d <= 21 ? 3 : 4;
+  }
+
+  function buildBoard(data, kind, period) {
+    var nameOf = {};
+    (data.owners || []).forEach(function (o) { nameOf[o.owner] = o.owner_name || o.owner; });
+    var inPeriod = function (iso) { var m = Number(String(iso || '').slice(5, 7)); return m >= period.m0 && m <= period.m1; };
+    var plans = data.plans.filter(function (p) {
+      return p.kind === kind && !p.cancelled && (inPeriod(p.due_date) || inPeriod(p.original_due_date));
+    });
+    var bySite = {};
+    plans.forEach(function (p) { (bySite[p.site_id] = bySite[p.site_id] || []).push(p); });
+    var rows = data.sites.filter(function (s) { return s.active !== false || bySite[s.id]; }).map(function (s) {
+      var ps = (bySite[s.id] || []).slice().sort(function (a, b) { return a.due_date.localeCompare(b.due_date); });
+      var people = [];
+      ps.forEach(function (p) {
+        [p.owner].concat(p.helpers || []).forEach(function (u) {
+          var n = (u === p.owner && p.owner_name) || nameOf[u] || u;
+          n = String(n).trim().split(/\s+/)[0];
+          if (n && people.indexOf(n) === -1) people.push(n);
+        });
+      });
+      return { site: s, plans: ps, people: people.join('/'), first: ps[0] || null };
+    });
+    rows.sort(function (a, b) {
+      if (!a.first !== !b.first) return a.first ? -1 : 1;
+      if (a.first && b.first && a.first.due_date !== b.first.due_date) return a.first.due_date.localeCompare(b.first.due_date);
+      return String(a.site.code).localeCompare(String(b.site.code));
+    });
+    var weekCount = {};
+    plans.forEach(function (p) {
+      var k = Number(p.due_date.slice(5, 7)) + '-' + p.week;
+      weekCount[k] = (weekCount[k] || 0) + 1;
+    });
+    return { rows: rows, weekCount: weekCount };
+  }
+
+  // Cell text + class for one plan at its due week: check mark on time, -2/-10 penalty, else the planned day.
+  function boardCell(p) {
+    var st = statusInfo(p);
+    if (p.status === 'submitted') return { text: '✓', cls: 'bc-ok', title: st.text };
+    if (p.status === 'late' || p.status === 'missing') return { text: st.short, cls: 'bc-bad', title: st.text };
+    return { text: String(Number(p.due_date.slice(8, 10))), cls: p.status === 'in_progress' ? 'bc-doing' : 'bc-plan', title: st.text };
+  }
+
+  function boardStatus(row) {
+    if (!row.first) return { text: 'ยังไม่ลงแผน', cls: 'err' };
+    var st = statusInfo(row.first);
+    return { text: st.text, cls: st.badge };
+  }
+
+  function boardNote(row) {
+    return row.plans.map(function (p) {
+      if (p.submitted_date) return 'ส่ง ' + p.submitted_date.slice(8, 10) + '/' + p.submitted_date.slice(5, 7) + '/' + p.submitted_date.slice(0, 4);
+      if (p.rescheduled) return 'เลื่อนจาก ' + thaiDate(p.original_due_date);
+      return '';
+    }).filter(Boolean).join(' · ');
+  }
+
+  function renderPlanBoard(host, data) {
+    host.innerHTML = '';
+    var kind = state.board.kind;
+    var freq = (data.frequency && data.frequency[kind]) || 2;
+    var periods = boardPeriods(freq);
+    // The board remembers a month, not a period index, so switching to a kind with another frequency keeps the same time of year.
+    var period = periods[Math.floor(((state.board.month || 1) - 1) / (12 / freq))] || periods[0];
+    var b = buildBoard(data, kind, period);
+    var planned = b.rows.filter(function (r) { return r.first; }).length;
+    var doneCnt = b.rows.filter(function (r) { return r.first && (r.first.status === 'submitted' || r.first.status === 'late'); }).length;
+    var total = b.rows.length;
+
+    var bar = el('div', 'toolbar no-print');
+    var segK = el('div', 'seg');
+    [['ONSITE', 'Onsite'], ['REMOTE', 'Remote']].forEach(function (k) {
+      var x = el('button', '', k[1]); x.type = 'button';
+      x.setAttribute('aria-pressed', kind === k[0] ? 'true' : 'false');
+      x.addEventListener('click', function () { state.board.kind = k[0]; renderPlanBoard(host, data); });
+      segK.appendChild(x);
+    });
+    bar.appendChild(segK);
+    bar.appendChild(makeSelect(periods.map(function (p) { return { value: String(p.idx), label: p.label }; }), String(period.idx), function (nv) {
+      state.board.month = periods[Number(nv)].m0; renderPlanBoard(host, data);
+    }, 'เลือกช่วงเวลา'));
+    var segF = el('div', 'seg');
+    [['ALL', 'ทุกสาขา'], ['TODO', 'ยังไม่ลงแผน (' + (total - planned) + ')'], ['DONE', 'ลงแล้ว']].forEach(function (k) {
+      var x = el('button', '', k[1]); x.type = 'button';
+      x.setAttribute('aria-pressed', state.board.filter === k[0] ? 'true' : 'false');
+      x.addEventListener('click', function () { state.board.filter = k[0]; renderPlanBoard(host, data); });
+      segF.appendChild(x);
+    });
+    bar.appendChild(segF);
+    bar.appendChild(btn('พิมพ์ตาราง', 'sm', function () { window.print(); }, 'printer'));
+    bar.appendChild(btn('ส่งออก Excel', 'sm', function () { exportBoardXlsx(b, kind, period, data.year); }, 'download'));
+    host.appendChild(bar);
+
+    host.appendChild(el('p', 'page-sub no-print', 'ลงแผนแล้ว ' + planned + ' / ' + total + ' สาขา · ส่งแล้ว ' + doneCnt + ' · ยังไม่ลง ' + (total - planned) +
+      ' · กำหนด ' + freq + ' ครั้ง/ปี' + (state.sess.isAdmin ? ' · กดช่องว่างในแถวที่ยังไม่ลงแผนเพื่อลงแผนสัปดาห์นั้น' : '')));
+
+    var months = [];
+    for (var m = period.m0; m <= period.m1; m++) months.push(m);
+    var wrap = el('div', 'table-wrap board-wrap');
+    var tbl = el('table', 'grid board');
+    var thead = el('thead');
+    var tr0 = el('tr');
+    var th0 = el('th', 'board-title', 'ตาราง ' + (kind === 'ONSITE' ? 'Onsite' : 'Remote') + ' Maintenance ปี ' + (data.year + 543) + ' · ' + period.label);
+    th0.colSpan = 6 + months.length * 4;
+    tr0.appendChild(th0);
+    thead.appendChild(tr0);
+    var tr1 = el('tr');
+    ['ลำดับ', 'Branch Code', 'ชื่อสาขา', 'ผู้รับผิดชอบ', 'สถานะ'].forEach(function (t, i) {
+      var th = el('th', 'bh-' + i, t); th.rowSpan = 3; tr1.appendChild(th);
+    });
+    months.forEach(function (mm) { var th = el('th', 'bh-month', BOARD_MONTHS[mm - 1]); th.colSpan = 4; tr1.appendChild(th); });
+    var thN = el('th', 'bh-note', 'หมายเหตุ'); thN.rowSpan = 3; tr1.appendChild(thN);
+    thead.appendChild(tr1);
+    var tr2 = el('tr'), tr3 = el('tr');
+    months.forEach(function (mm) {
+      [1, 2, 3, 4].forEach(function (w) {
+        tr2.appendChild(el('th', 'bh-week', 'W' + w));
+        var c = b.weekCount[mm + '-' + w] || 0;
+        var th = el('th', 'bh-count', c ? String(c) : '');
+        th.title = c + ' สาขาในสัปดาห์นี้';
+        tr3.appendChild(th);
+      });
+    });
+    thead.appendChild(tr2);
+    thead.appendChild(tr3);
+    tbl.appendChild(thead);
+
+    var tbody = el('tbody');
+    var shown = b.rows.filter(function (r) {
+      return state.board.filter === 'ALL' || (state.board.filter === 'TODO' ? !r.first : !!r.first);
+    });
+    shown.forEach(function (r, i) {
+      var tr = el('tr', r.first ? '' : 'b-todo');
+      tr.appendChild(el('td', 'bc-num', String(i + 1)));
+      tr.appendChild(el('td', 'bc-code', r.site.code));
+      tr.appendChild(el('td', 'bc-name', r.site.name));
+      tr.appendChild(el('td', 'bc-people', r.people || '-'));
+      var stt = boardStatus(r);
+      var tdS = el('td', 'bc-status');
+      tdS.appendChild(el('span', 'badge ' + stt.cls, stt.text));
+      tr.appendChild(tdS);
+      months.forEach(function (mm) {
+        [1, 2, 3, 4].forEach(function (w) {
+          var td = el('td', 'bc-wk');
+          var ym = data.year + '-' + String(mm).padStart(2, '0');
+          r.plans.forEach(function (p) {
+            if (p.due_date.slice(0, 7) === ym && p.week === w) {
+              var c = boardCell(p);
+              td.className = 'bc-wk ' + c.cls;
+              td.textContent = c.text;
+              td.title = r.site.code + ' · ' + c.title + ' · นัด ' + thaiDate(p.due_date);
+              td.addEventListener('click', function () { openVisit(p.id); });
+            } else if (p.rescheduled && p.original_due_date.slice(0, 7) === ym && weekOfIso(p.original_due_date) === w && !td.textContent) {
+              td.className = 'bc-wk bc-moved';
+              td.title = 'วันนัดเดิม ' + thaiDate(p.original_due_date) + ' (เลื่อนไป ' + thaiDate(p.due_date) + ')';
+            }
+          });
+          if (!td.textContent && state.sess.isAdmin && !r.first) {
+            td.classList.add('bc-add');
+            td.title = 'ลงแผน ' + r.site.code + ' สัปดาห์ W' + w + ' ' + BOARD_MONTHS[mm - 1];
+            td.addEventListener('click', function () {
+              openPlanFormModal(data.sites, null, data.owners, { site_id: r.site.id, kind: kind, due_date: defaultDateForWeek(ym, w) });
+            });
+          }
+          tr.appendChild(td);
+        });
+      });
+      tr.appendChild(el('td', 'bc-note', boardNote(r)));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+    host.appendChild(wrap);
+    host.appendChild(el('p', 'page-sub board-legend', '✓ ส่งตรงเวลา · -2 ส่งช้า · -10 ไม่ส่ง · ตัวเลข = วันที่นัด · ช่องเส้นประ = วันนัดเดิมก่อนเลื่อน'));
+  }
+
+  function exportBoardXlsx(b, kind, period, year) {
+    var months = [];
+    for (var m = period.m0; m <= period.m1; m++) months.push(m);
+    var head1 = ['ลำดับ', 'Branch Code', 'ชื่อสาขา', 'ผู้รับผิดชอบ', 'สถานะ'], head2 = ['', '', '', '', ''];
+    months.forEach(function (mm) { [1, 2, 3, 4].forEach(function (w) { head1.push(w === 1 ? BOARD_MONTHS[mm - 1] : ''); head2.push('W' + w); }); });
+    head1.push('หมายเหตุ'); head2.push('');
+    var rows = [['ตาราง ' + (kind === 'ONSITE' ? 'Onsite' : 'Remote') + ' Maintenance ปี ' + (year + 543) + ' ' + period.label], head1, head2];
+    b.rows.forEach(function (r, i) {
+      var line = [i + 1, r.site.code, r.site.name, r.people, boardStatus(r).text];
+      months.forEach(function (mm) {
+        [1, 2, 3, 4].forEach(function (w) {
+          var ym = year + '-' + String(mm).padStart(2, '0');
+          var p = r.plans.filter(function (x) { return x.due_date.slice(0, 7) === ym && x.week === w; })[0];
+          line.push(p ? boardCell(p).text : '');
+        });
+      });
+      line.push(boardNote(r));
+      rows.push(line);
+    });
+    var fname = 'IT-MA-' + kind + '-' + year + '-' + (period.idx + 1) + '.xlsx';
+    exportXlsx(fname, [{ name: kind === 'ONSITE' ? 'Onsite' : 'Remote', rows: rows }]);
+    showMsg('ดาวน์โหลดไฟล์ ' + fname + ' เรียบร้อยแล้ว', 'ok');
+  }
+
+  // preset (optional, new plans only): { site_id, kind, due_date } from a board cell.
+  function openPlanFormModal(sites, existing, ownersList, preset) {
     openModal(existing ? 'เลื่อน / แก้ไขแผน ' + existing.site_code : 'เพิ่มแผน MA ใหม่', function (body, close) {
       if (existing) {
         var note = el('div', 'msg warn');
         note.textContent = 'วันนัดเดิมคือ ' + thaiDate(existing.original_due_date) + ' — การเลื่อนวันจะไม่เปลี่ยนวันคิดคะแนน';
         body.appendChild(note);
       }
-      var siteVal = existing ? String(existing.site_id) : (sites[0] ? String(sites[0].id) : '');
-      var kindVal = existing ? existing.kind : 'ONSITE';
+      var siteVal = existing ? String(existing.site_id) : preset ? String(preset.site_id) : (sites[0] ? String(sites[0].id) : '');
+      var kindVal = existing ? existing.kind : preset ? preset.kind : 'ONSITE';
 
       if (!existing) {
         var sf = el('div', 'field');
@@ -2927,7 +3170,7 @@
 
       var fg = el('div', 'form-grid two');
       var fDue = el('label', 'field'); fDue.appendChild(el('span', 'lbl', 'วันนัดตรวจ *'));
-      var iDue = el('input', 'input'); iDue.type = 'date'; iDue.value = existing ? existing.due_date : (state.year + '-01-15');
+      var iDue = el('input', 'input'); iDue.type = 'date'; iDue.value = existing ? existing.due_date : preset ? preset.due_date : (state.year + '-01-15');
       fDue.appendChild(iDue); fg.appendChild(fDue);
 
       var iOwn = null, iOwnName = null;
@@ -3292,6 +3535,34 @@
       }));
       aCard.appendChild(actA);
       v.appendChild(aCard);
+
+      // How many visits a year each site needs; drives the periods of ตารางคุมแผน.
+      var fCard = el('div', 'card');
+      fCard.style.marginTop = '14px';
+      fCard.appendChild(el('h3', 'item-title', 'ความถี่การตรวจต่อสาขา'));
+      fCard.appendChild(el('p', 'page-sub', 'จำนวนครั้งต่อปีที่แต่ละสาขาต้องได้รับการตรวจ ใช้แบ่งช่วงในตารางคุมแผน (2 ครั้ง = ครึ่งปี, 4 ครั้ง = ไตรมาส)'));
+      var freqNow = data.frequency || { ONSITE: 2, REMOTE: 2 };
+      var freqNext = { ONSITE: freqNow.ONSITE, REMOTE: freqNow.REMOTE };
+      var fGrid = el('div', 'form-grid two');
+      [['ONSITE', 'Onsite'], ['REMOTE', 'Remote']].forEach(function (k) {
+        var f = el('div', 'field');
+        f.appendChild(el('span', 'lbl', k[1]));
+        f.appendChild(makeSelect([1, 2, 3, 4, 6, 12].map(function (n) { return { value: String(n), label: n + ' ครั้ง/ปี' }; }),
+          String(freqNow[k[0]]), function (nv) { freqNext[k[0]] = Number(nv); }, 'ความถี่ ' + k[1]));
+        fGrid.appendChild(f);
+      });
+      fCard.appendChild(fGrid);
+      var actF = el('div', 'row-actions');
+      actF.style.marginTop = '14px';
+      actF.appendChild(btn('บันทึกความถี่', 'primary', function () {
+        api('plan_frequency_save', { frequency: freqNext }).then(function (res) {
+          data.frequency = res.frequency;
+          showMsg('บันทึกความถี่การตรวจเรียบร้อยแล้ว', 'ok');
+          renderSettings(data);
+        }).catch(function (e) { showMsg(e.message, 'err'); });
+      }));
+      fCard.appendChild(actF);
+      v.appendChild(fCard);
 
       // P4: security_viewers management (ADMIN only)
       var secCard = el('div', 'card');
