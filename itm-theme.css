@@ -882,14 +882,19 @@ textarea.input { min-height: 84px; resize: vertical; }
 }
 .kpi-lead-top {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
+/* Badge, number and counts get room to breathe instead of stacking tight in one corner. */
+.kpi-lead { padding: var(--space-5) var(--space-5) var(--space-4); }
+.kpi-lead-main { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+.kpi-lead-side { text-align: right; display: flex; flex-direction: column; gap: 4px; padding-top: 2px; }
+.kpi-lead-count { font-size: var(--fs-m); font-weight: 600; color: var(--c-ink); }
 .kpi-num-big {
-  font-size: var(--fs-display);
+  font-size: clamp(2.6rem, 4.2vw, 3.4rem);
   font-weight: 700;
-  line-height: 1.05;
+  line-height: 1;
   color: var(--c-brand-strong);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;

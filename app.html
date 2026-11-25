@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125f">
+<link rel="stylesheet" href="itm-theme.css?v=20261125g">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -1011,13 +1011,12 @@
     var kpiGrid = el('div', 'kpi-grid');
     var lead = el('div', 'kpi-lead');
     var leadTop = el('div', 'kpi-lead-top');
-    var leadLeft = el('div');
+    var leadLeft = el('div', 'kpi-lead-main');
     leadLeft.appendChild(el('div', 'badge brand', 'ความคืบหน้าเดือนนี้'));
     leadLeft.appendChild(el('div', 'kpi-num-big', pct + '%'));
     leadTop.appendChild(leadLeft);
-    var leadRight = el('div');
-    leadRight.style.textAlign = 'right';
-    leadRight.appendChild(el('div', '', 'ทำครบ ' + doneAll + ' / ' + totalAll + ' แผน'));
+    var leadRight = el('div', 'kpi-lead-side');
+    leadRight.appendChild(el('div', 'kpi-lead-count', 'ทำครบ ' + doneAll + ' / ' + totalAll + ' แผน'));
     leadRight.appendChild(el('div', 'page-sub', 'Onsite ' + k.onsite_done + '/' + k.onsite_total + ' · Remote ' + k.remote_done + '/' + k.remote_total));
     leadTop.appendChild(leadRight);
     lead.appendChild(leadTop);
