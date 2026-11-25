@@ -83,6 +83,15 @@
     bad_hours: 'รูปแบบเวลาเปิด-ปิดไม่ถูกต้อง (ใช้รูปแบบ HH:MM เช่น 08:00)',
     duplicate: 'มีข้อมูลซ้ำในระบบแล้ว',
     duplicate_plan: 'สาขานี้มีแผนชนิดเดียวกันในวันนัดนี้อยู่แล้ว',
+    not_submitted: 'ใบงานนี้ยังไม่ได้ส่ง หรือถูกเปิดแก้ไขไปแล้ว',
+    otp_unavailable: 'ระบบ OTP ยังไม่พร้อมใช้งาน กรุณาแจ้งผู้ดูแล',
+    otp_wait: 'เพิ่งขอ OTP ไป กรุณารอ 60 วินาทีแล้วขอใหม่',
+    otp_not_sent: 'ส่ง OTP ทาง LINE ให้ผู้ดูแลไม่ได้ (ผู้ดูแลยังไม่ได้ผูก LINE หรือ LINE ปิดอยู่)',
+    otp_expired: 'OTP หมดอายุหรือยังไม่ได้ขอ กรุณาขอรหัสใหม่',
+    otp_other_user: 'OTP นี้ขอโดยคนอื่น กรุณาขอรหัสใหม่ด้วยบัญชีของคุณ',
+    otp_format: 'OTP ต้องเป็นตัวเลข 6 หลัก',
+    otp_wrong: 'OTP ไม่ถูกต้อง',
+    otp_locked: 'ใส่ OTP ผิดเกิน 5 ครั้ง รหัสนี้ถูกยกเลิก กรุณาขอใหม่',
     unknown_user: 'มีชื่อผู้รับผิดชอบหรือผู้ช่วยที่ไม่อยู่ในรายชื่อ IT MA ของ Job Tracker',
     server: 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'
   };
@@ -1719,6 +1728,79 @@
     return { total: total, answered: answered, ansMap: ansSet };
   }
 
+  function bkkDateTime(iso) {
+    var ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return '-';
+    return thaiDate(new Date(ms + 7 * 3600 * 1000).toISOString()) + ' ' + bkkTimeHm(iso);
+  }
+
+  // Mirrors the server rule: ADMIN, the visit's operators, or the plan owner/helpers.
+  function canRequestReopen(d) {
+    if (state.sess.isAdmin) return true;
+    var me = String(state.sess.staff.u || '').toLowerCase();
+    return (d.visit.operators || []).indexOf(me) !== -1 || String(d.plan.owner || '').toLowerCase() === me ||
+      (d.plan.helpers || []).indexOf(me) !== -1;
+  }
+
+  // Two steps like AUDIT "ยกเลิกประกาศผล": reason -> OTP sent to IT admins on LINE -> enter OTP.
+  function openReopenModal(d) {
+    openModal('ขอเปิดใบงานที่ส่งแล้วให้แก้ไข', function (body, close) {
+      body.appendChild(el('p', 'page-sub', 'ระบบจะส่งรหัส OTP ทาง LINE ไปที่ผู้ดูแล IT MA ให้ขอรหัสจากผู้ดูแล แล้วกรอกด้านล่าง (ใช้ได้ 5 นาที) คะแนนยังคิดจากเวลาส่งครั้งแรก'));
+      var fR = el('label', 'field');
+      fR.appendChild(el('span', 'lbl', 'เหตุผลที่ต้องแก้ไข *'));
+      var iR = el('input', 'input');
+      iR.maxLength = 300;
+      iR.placeholder = 'เช่น กรอกเลข SN ผิด';
+      fR.appendChild(iR);
+      body.appendChild(fR);
+
+      var fO = el('label', 'field');
+      fO.appendChild(el('span', 'lbl', 'รหัส OTP จากผู้ดูแล'));
+      var iO = el('input', 'input');
+      iO.inputMode = 'numeric';
+      iO.autocomplete = 'one-time-code';
+      iO.maxLength = 6;
+      iO.placeholder = '6 หลัก';
+      iO.disabled = true;
+      fO.appendChild(iO);
+      body.appendChild(fO);
+
+      var info = el('div', 'fielderr');
+      body.appendChild(info);
+      var act = el('div', 'row-actions');
+      var sendBtn = btn('ส่ง OTP ไปที่ผู้ดูแล', 'sm', function () {
+        if (sendBtn.disabled) return;
+        info.textContent = '';
+        if (!iR.value.trim()) { info.textContent = 'กรุณาระบุเหตุผลที่ต้องแก้ไข'; iR.focus(); return; }
+        sendBtn.disabled = true;
+        api('visit_reopen_otp', { visit_id: d.visit.id, reason: iR.value.trim() }).then(function (res) {
+          info.textContent = 'ส่ง OTP ให้ผู้ดูแลแล้ว ' + res.sent + ' คน ขอรหัสจากผู้ดูแลแล้วกรอกด้านบน';
+          iO.disabled = false;
+          iO.focus();
+          okBtn.disabled = false;
+          setTimeout(function () { sendBtn.disabled = false; }, 60000);
+        }).catch(function (e) { info.textContent = e.message; sendBtn.disabled = false; });
+      }, 'upload');
+      var okBtn = btn('ยืนยันเปิดแก้ไข', 'primary sm', function () {
+        if (okBtn.disabled) return;
+        info.textContent = '';
+        okBtn.disabled = true;
+        api('visit_reopen', { visit_id: d.visit.id, otp: iO.value.trim() }).then(function () {
+          close();
+          showMsg('เปิดใบงานให้แก้ไขแล้ว แก้เสร็จกดส่งใบงานอีกครั้ง', 'ok');
+          openVisit(d.plan.id);
+        }).catch(function (e) {
+          info.textContent = e.message + (e.data && e.data.left ? ' (เหลือ ' + e.data.left + ' ครั้ง)' : '');
+          okBtn.disabled = false;
+        });
+      }, 'check');
+      okBtn.disabled = true;
+      act.appendChild(sendBtn);
+      act.appendChild(okBtn);
+      body.appendChild(act);
+    });
+  }
+
   function renderVisitView() {
     var d = state.visitData;
     if (!d) return;
@@ -1740,16 +1822,27 @@
     backRow.appendChild(btn('กลับ', 'sm', function () { goTab('overview'); }, 'arrowLeft'));
     backRow.appendChild(el('span', 'badge ' + st.badge, st.text));
     backRow.appendChild(el('span', 'badge brand', d.plan.kind));
+    var reopened = d.visit.status === 'draft' && Number(d.visit.reopen_count || 0) > 0;
+    if (reopened) backRow.appendChild(el('span', 'badge warn', 'เปิดแก้ไข ครั้งที่ ' + d.visit.reopen_count));
     titleWrap.appendChild(backRow);
     titleWrap.appendChild(el('h2', 'page-title', d.site.code + ' ' + d.site.name));
     var opNames = Object.values(d.visit.operator_names || {}).join(', ');
     titleWrap.appendChild(el('p', 'page-sub', 'นัดตรวจ ' + thaiDate(d.plan.due_date) + (opNames ? ' · ผู้ปฏิบัติงาน: ' + opNames : '')));
+    if (d.visit.status === 'submitted' && d.visit.submitted_at) {
+      titleWrap.appendChild(el('p', 'page-sub', 'ส่งเมื่อ ' + bkkDateTime(d.visit.submitted_at) +
+        (d.visit.submitted_by_name ? ' โดย ' + d.visit.submitted_by_name : '') +
+        (d.visit.first_submitted_at && d.visit.first_submitted_at !== d.visit.submitted_at ? ' · ส่งครั้งแรก ' + bkkDateTime(d.visit.first_submitted_at) + ' (คะแนนคิดจากเวลานี้)' : '')));
+    } else if (reopened && d.visit.first_submitted_at) {
+      titleWrap.appendChild(el('p', 'page-sub', 'ส่งครั้งแรก ' + bkkDateTime(d.visit.first_submitted_at) + ' · คะแนนคิดจากเวลานี้ แก้แล้วกดส่งใบงานอีกครั้ง'));
+    }
     topRow.appendChild(titleWrap);
 
     var actions = el('div', 'row-actions no-print');
     actions.appendChild(btn('พิมพ์ใบงาน', 'sm', function () { window.print(); }, 'printer'));
     if (!locked) {
       actions.appendChild(btn('ส่งใบงาน', 'primary sm', submitCurrentVisit, 'check'));
+    } else if (d.visit.status === 'submitted' && !d.plan.cancelled && canRequestReopen(d)) {
+      actions.appendChild(btn('ขอเปิดแก้ไข', 'sm', function () { openReopenModal(d); }, 'refresh'));
     }
     topRow.appendChild(actions);
     sticky.appendChild(topRow);
