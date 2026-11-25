@@ -367,14 +367,28 @@
     $('modalTitle').textContent = title;
     var body = $('modalBody');
     body.innerHTML = '';
+    modalDirty = false;
     renderFn(body, closeModal);
     $('modalBg').hidden = false;
     $('modalClose').focus();
   }
-  function closeModal() { $('modalBg').hidden = true; $('modalBody').innerHTML = ''; }
+  function closeModal() { $('modalBg').hidden = true; $('modalBody').innerHTML = ''; modalDirty = false; }
+  // Once the user has typed in a modal, only the "ปิด" button (or the form's own save) closes it,
+  // so a stray click outside or a text drag that ends on the backdrop cannot throw the input away.
+  var modalDirty = false;
+  var downOnBg = false;
+  $('modalBody').addEventListener('input', function () { modalDirty = true; });
+  $('modalBody').addEventListener('change', function () { modalDirty = true; });
   $('modalClose').addEventListener('click', closeModal);
-  $('modalBg').addEventListener('click', function (e) { if (e.target === $('modalBg')) closeModal(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('modalBg').hidden) closeModal(); });
+  $('modalBg').addEventListener('mousedown', function (e) { downOnBg = e.target === $('modalBg'); });
+  $('modalBg').addEventListener('click', function (e) {
+    var fromBg = downOnBg && e.target === $('modalBg');
+    downOnBg = false;
+    if (fromBg && !modalDirty) closeModal();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('modalBg').hidden && !modalDirty) closeModal();
+  });
 
   // ---------------- Network & Offline Queue ----------------
   function postFn(fnName, body, headers) {
