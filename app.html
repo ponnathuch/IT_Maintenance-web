@@ -82,6 +82,8 @@
     bad_location: 'อ่านพิกัดไม่ได้ ใช้รูปแบบ 13.7563, 100.5018 หรือลิงก์ Google Maps แบบเต็ม',
     bad_hours: 'รูปแบบเวลาเปิด-ปิดไม่ถูกต้อง (ใช้รูปแบบ HH:MM เช่น 08:00)',
     duplicate: 'มีข้อมูลซ้ำในระบบแล้ว',
+    duplicate_plan: 'สาขานี้มีแผนชนิดเดียวกันในวันนัดนี้อยู่แล้ว',
+    unknown_user: 'มีชื่อผู้รับผิดชอบหรือผู้ช่วยที่ไม่อยู่ในรายชื่อ IT MA ของ Job Tracker',
     server: 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'
   };
 
@@ -2795,10 +2797,38 @@
         fOwnName.appendChild(iOwnName); fg.appendChild(fOwnName);
       }
 
-      var fHelp = el('label', 'field'); fHelp.appendChild(el('span', 'lbl', 'ผู้ช่วย (คั่นด้วยจุลภาค)'));
-      var iHelp = el('input', 'input'); iHelp.value = existing ? (existing.helpers || []).join(', ') : '';
-      fHelp.appendChild(iHelp); fg.appendChild(fHelp);
       body.appendChild(fg);
+
+      // Helpers are picked from the JT user list (same pill toggles as security_viewers); no free text.
+      var chosenHelpers = existing ? (existing.helpers || []).slice() : [];
+      var helperUsers = Array.isArray(ownersList) ? ownersList.slice() : [];
+      chosenHelpers.forEach(function (u) {
+        if (!helperUsers.some(function (o) { return o.owner === u; })) helperUsers.push({ owner: u, owner_name: u });
+      });
+      var fHelp = el('div', 'field');
+      fHelp.appendChild(el('span', 'lbl', 'ผู้ช่วย (กดเลือกได้หลายคน)'));
+      var helpPills = el('div', 'dow-pills');
+      if (!helperUsers.length) helpPills.appendChild(el('span', 'page-sub', 'ยังไม่มีรายชื่อผู้ใช้จาก Job Tracker'));
+      helperUsers.forEach(function (uObj) {
+        var uname = String(uObj.owner || '').toLowerCase();
+        var hb = el('button', 'btn sm', uObj.owner_name || uname);
+        hb.type = 'button';
+        hb.title = uname;
+        var syncH = function () {
+          var on = chosenHelpers.indexOf(uname) !== -1;
+          hb.className = 'btn sm' + (on ? ' primary' : '');
+          hb.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        syncH();
+        hb.addEventListener('click', function () {
+          var idx = chosenHelpers.indexOf(uname);
+          if (idx === -1) chosenHelpers.push(uname); else chosenHelpers.splice(idx, 1);
+          syncH();
+        });
+        helpPills.appendChild(hb);
+      });
+      fHelp.appendChild(helpPills);
+      body.appendChild(fHelp);
 
       var iReason = null;
       if (existing) {
@@ -2812,22 +2842,32 @@
       body.appendChild(errEl);
 
       var act = el('div', 'row-actions');
-      act.appendChild(btn('บันทึกแผน', 'primary', function () {
+      var saveBtn = btn('บันทึกแผน', 'primary', function () {
+        if (saveBtn.disabled) return;
         errEl.textContent = '';
         if (existing && iDue.value !== existing.due_date && (!iReason || !iReason.value.trim())) {
           errEl.textContent = 'กรุณาระบุเหตุผลการเลื่อนวันนัด';
           if (iReason) iReason.focus();
           return;
         }
-        var helpers = iHelp.value.split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
         var finalOwner = iOwn ? iOwn.value.trim() : chosenOwner;
+        var helpers = chosenHelpers.filter(function (h) { return h !== String(finalOwner || '').toLowerCase(); });
         var finalOwnerName = iOwnName ? iOwnName.value.trim() : chosenOwnerName;
         var req = existing
           ? api('plan_update', { plan_id: existing.id, due_date: iDue.value, owner: finalOwner, owner_name: finalOwnerName, helpers: helpers, reason: iReason ? iReason.value.trim() : '' })
           : api('plan_create', { site_id: Number(siteVal), kind: kindVal, due_date: iDue.value, owner: finalOwner, owner_name: finalOwnerName, helpers: helpers });
+        // Lock until the server answers so a double click cannot create two plans.
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'กำลังบันทึก...';
         req.then(function () { close(); showMsg('บันทึกแผนเรียบร้อยแล้ว', 'ok'); loadPlans(); })
-          .catch(function (e) { errEl.textContent = e.message; });
-      }));
+          .catch(function (e) {
+            var users = e.data && Array.isArray(e.data.users) ? ': ' + e.data.users.join(', ') : '';
+            errEl.textContent = e.message + users;
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'บันทึกแผน';
+          });
+      });
+      act.appendChild(saveBtn);
       body.appendChild(act);
     });
   }
