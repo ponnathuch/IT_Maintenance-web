@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261124a">
+<link rel="stylesheet" href="itm-theme.css?v=20261125a">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -1962,7 +1962,8 @@
       secCard.appendChild(sh);
 
       secItems.forEach(function (it) {
-        var cur = ansMap[scopeKey + '|tpl:' + it.id] || null;
+        var ansKey = scopeKey + '|tpl:' + it.id;
+        var cur = ansMap[ansKey] || null;
         var row = el('div', 'chk-item' + (cur && cur.result === 'abnormal' ? ' is-abnormal' : ''));
         row.id = 'chk-' + scopeKey.replace(':', '-') + '-' + it.id;
         row.appendChild(el('div', 'chk-label', it.label));
@@ -2015,7 +2016,12 @@
           b.disabled = locked;
           b.appendChild(icon(opt[2], 15));
           b.appendChild(el('span', '', opt[1]));
-          b.addEventListener('click', function () { saveAns(opt[0]); });
+          b.addEventListener('click', function () {
+            // A note typed before any result was picked is saved together with the first result.
+            var draft = !cur && d._noteDraft && d._noteDraft[ansKey];
+            if (draft) delete d._noteDraft[ansKey];
+            saveAns(opt[0], undefined, draft || undefined);
+          });
           btns.appendChild(b);
         });
         row.appendChild(btns);
@@ -2033,20 +2039,45 @@
           row.appendChild(vInp);
         }
 
-        // Expanded note & photos when abnormal (or already has note/photos)
-        var showExtra = (cur && (cur.result === 'abnormal' || cur.note || (cur.photo_paths && cur.photo_paths.length)));
+        // Note & photos: always open when abnormal or already filled; otherwise the user opens it
+        // with the "หมายเหตุ" toggle (paper form has a หมายเหตุ/การแก้ไข column on every row).
+        d._noteOpen = d._noteOpen || {};
+        d._noteDraft = d._noteDraft || {};
+        var hasContent = !!(cur && (cur.note || (cur.photo_paths && cur.photo_paths.length)));
+        var forcedOpen = !!(cur && cur.result === 'abnormal') || hasContent;
+        var showExtra = forcedOpen || (!locked && d._noteOpen[ansKey]);
+        if (!forcedOpen && !locked) {
+          var tg = el('button', 'note-toggle no-print', d._noteOpen[ansKey] ? '− ซ่อนหมายเหตุ' : '+ หมายเหตุ');
+          tg.type = 'button';
+          tg.setAttribute('aria-expanded', d._noteOpen[ansKey] ? 'true' : 'false');
+          tg.addEventListener('click', function () {
+            d._noteOpen[ansKey] = !d._noteOpen[ansKey];
+            renderVisitView();
+            var inp = document.getElementById('note-' + row.id);
+            if (d._noteOpen[ansKey] && inp) inp.focus();
+          });
+          row.appendChild(tg);
+        }
         if (showExtra) {
           var extra = el('div', 'chk-extra');
           var noteInp = el('input', 'input');
           noteInp.type = 'text';
-          noteInp.placeholder = 'บันทึกอาการผิดปกติ / หมายเหตุการแก้ไข...';
-          noteInp.value = cur.note || '';
+          noteInp.id = 'note-' + row.id;
+          noteInp.setAttribute('aria-label', 'หมายเหตุ / การแก้ไข: ' + it.label);
+          noteInp.placeholder = cur && cur.result === 'abnormal'
+            ? 'บันทึกอาการผิดปกติ / หมายเหตุการแก้ไข...'
+            : 'หมายเหตุ / การแก้ไข...';
+          noteInp.value = cur ? (cur.note || '') : (d._noteDraft[ansKey] || '');
           noteInp.disabled = locked;
-          noteInp.addEventListener('change', function () { saveAns(cur.result, cur.value_text, noteInp.value); });
+          noteInp.addEventListener('change', function () {
+            if (cur) saveAns(cur.result, cur.value_text, noteInp.value);
+            else d._noteDraft[ansKey] = noteInp.value;
+          });
           extra.appendChild(noteInp);
+          if (!cur) extra.appendChild(el('div', 'page-sub', 'เลือก ปกติ / ไม่ปกติ / ไม่เกี่ยว แล้วหมายเหตุจะบันทึกพร้อมกัน'));
 
           var pRow = el('div', 'photo-row');
-          (cur.photo_paths || []).forEach(function (p) {
+          ((cur && cur.photo_paths) || []).forEach(function (p) {
             var url = (d.photo_urls || {})[p];
             if (url) {
               var a = document.createElement('a');
@@ -2059,7 +2090,7 @@
               pRow.appendChild(el('span', 'badge muted', 'รูปเก็บที่ Google Drive แล้ว'));
             }
           });
-          if (!locked) {
+          if (!locked && cur) {
             var fi = document.createElement('input');
             fi.type = 'file'; fi.accept = 'image/*'; fi.capture = 'environment'; fi.hidden = true;
             fi.addEventListener('change', function () {

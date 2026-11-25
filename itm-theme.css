@@ -1170,6 +1170,20 @@ table.grid thead th.sticky-col {
   border-color: var(--c-ink-2);
   color: var(--c-surface-solid);
 }
+.note-toggle {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: var(--fs-s);
+  cursor: pointer;
+}
+.note-toggle:hover { background: rgba(0, 0, 0, 0.04); color: var(--c-ink); }
+.note-toggle:focus-visible { outline: 2px solid var(--c-ink-2); outline-offset: 2px; }
 .chk-extra {
   display: flex;
   flex-direction: column;
