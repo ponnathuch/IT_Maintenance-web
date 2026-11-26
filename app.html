@@ -3992,7 +3992,7 @@
     if (mapModulePromise) return mapModulePromise;
     mapModulePromise = new Promise(function (resolve) {
       var s = document.createElement('script');
-      s.src = 'presence-map.js?v=20261124a';
+      s.src = 'presence-map.js?v=20261126a';
       s.onload = function () { resolve(window.ItmPresenceMap || null); };
       s.onerror = function () { mapModulePromise = null; resolve(null); };
       document.head.appendChild(s);
@@ -4045,18 +4045,19 @@
       var inOpenHours = typeof s.in_open_hours === 'boolean'
         ? s.in_open_hours
         : (s.site_id ? inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now) : true);
-      var hasRedTunnel = s.tunnel_state === 'up' || s.tunnel_state === 'down';
+      var isRedTunnelDown = s.tunnel_state === 'down' && s.branch_status === 'tunnel_down';
+      var isRedTunnelClosed = s.tunnel_state === 'down' && s.branch_status === 'closed';
       var branchStatus = !collectorOk
         ? 'no_data'
-        : (hasRedTunnel && s.branch_status === 'tunnel_down')
+        : isRedTunnelDown
           ? 'tunnel_down'
-          : (hasRedTunnel && s.branch_status === 'closed')
+          : isRedTunnelClosed
             ? 'closed'
             : totalCnt === 0
               ? 'empty'
               : (onlineCnt === 0 && !inOpenHours)
                 ? 'closed'
-                : (!hasRedTunnel && onlineCnt === 0 && inOpenHours)
+                : (onlineCnt === 0 && inOpenHours)
                   ? 'tunnel_down'
                   : (onlineCnt < totalCnt ? 'partial_down' : 'ok');
       var isSilent = branchStatus === 'tunnel_down';
@@ -4140,15 +4141,14 @@
       var inOpenHours = typeof s.in_open_hours === 'boolean'
         ? s.in_open_hours
         : inOpenHoursBkk(s.open_time, s.close_time, s.closed_dow, data.now);
-      var hasRedTunnel = s.tunnel_state === 'up' || s.tunnel_state === 'down';
-      var isRedTunnelDown = hasRedTunnel && s.branch_status === 'tunnel_down';
+      var isRedTunnelDown = s.tunnel_state === 'down' && s.branch_status === 'tunnel_down';
       if (!isRedTunnelDown) {
         if (!devs.length || online === devs.length) return;
         if (online === 0 && !inOpenHours) return; // closed outside operating hours is normal
       }
       var lastSeen = '';
       devs.forEach(function (d) { if (d.last_seen > lastSeen) lastSeen = d.last_seen; });
-      var isTunnelDown = isRedTunnelDown || (!hasRedTunnel && online === 0);
+      var isTunnelDown = isRedTunnelDown || online === 0;
       var downSince = (isRedTunnelDown && s.tunnel_since) ? s.tunnel_since : lastSeen;
       out.push({
         key: siteGroupKey(s),
