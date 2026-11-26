@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IT Maintenance (IT MA)</title>
-<link rel="stylesheet" href="itm-theme.css?v=20261125i">
+<link rel="stylesheet" href="itm-theme.css?v=20261126a">
 </head>
 <body data-tab="overview">
 <div class="ambient-bg" aria-hidden="true"></div>
@@ -4344,7 +4344,7 @@
     var kpiGrid = el('div', 'kpi-grid');
     var lead = el('div', 'kpi-lead');
     var leadTop = el('div', 'kpi-lead-top');
-    var leadL = el('div');
+    var leadL = el('div', 'kpi-lead-main');
     leadL.appendChild(el('div', 'badge ' + (summary.collector_ok ? 'brand' : 'warn'), summary.collector_ok ? 'เครื่องออนไลน์ทั้งหมด' : 'สถานะเครื่องล่าสุด'));
     leadL.appendChild(
       el(
@@ -4993,7 +4993,7 @@
     var kpiGrid = el('div', 'kpi-grid');
     var lead = el('div', 'kpi-lead');
     var leadTop = el('div', 'kpi-lead-top');
-    var leadL = el('div');
+    var leadL = el('div', 'kpi-lead-main');
     leadL.appendChild(el('div', 'badge brand', 'เว็บที่ไม่ใช่เว็บงานปกติ (' + sec.days + ' วัน)'));
     leadL.appendChild(el('div', 'kpi-num-big', fmtN(sec.total_hits) + ' ครั้ง'));
     leadTop.appendChild(leadL);

@@ -894,7 +894,7 @@ textarea.input { min-height: 84px; resize: vertical; }
 .kpi-num-big {
   font-size: clamp(2.6rem, 4.2vw, 3.4rem);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.25; /* room for Thai upper vowels and tone marks */
   color: var(--c-brand-strong);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
