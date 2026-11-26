@@ -169,6 +169,7 @@
   }
 
   // ---------------- DOM & Format Helpers ----------------
+    function fmtN(n) { return Number(n || 0).toLocaleString('en-US'); }
   function el(tag, cls, text) {
     var node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -4994,12 +4995,12 @@
     var leadTop = el('div', 'kpi-lead-top');
     var leadL = el('div');
     leadL.appendChild(el('div', 'badge brand', 'เว็บที่ไม่ใช่เว็บงานปกติ (' + sec.days + ' วัน)'));
-    leadL.appendChild(el('div', 'kpi-num-big', String(sec.total_hits) + ' ครั้ง'));
+    leadL.appendChild(el('div', 'kpi-num-big', fmtN(sec.total_hits) + ' ครั้ง'));
     leadTop.appendChild(leadL);
     var leadR = el('div');
     leadR.style.textAlign = 'right';
-    leadR.appendChild(el('div', '', 'ถูกบล็อก (Denied) ' + sec.denied_hits + ' ครั้ง'));
-    leadR.appendChild(el('div', 'page-sub', 'อนุญาต (Non-Productive) ' + sec.allowed_hits + ' ครั้ง'));
+    leadR.appendChild(el('div', '', 'ถูกบล็อก (Denied) ' + fmtN(sec.denied_hits) + ' ครั้ง'));
+    leadR.appendChild(el('div', 'page-sub', 'อนุญาต (Non-Productive) ' + fmtN(sec.allowed_hits) + ' ครั้ง'));
     leadTop.appendChild(leadR);
     lead.appendChild(leadTop);
     kpiGrid.appendChild(lead);
@@ -5011,10 +5012,10 @@
       box.appendChild(el('div', 'k-val', val));
       return box;
     };
-    sub.appendChild(mkMini('ถูกบล็อก (Denied)', String(sec.denied_hits), sec.denied_hits > 0 ? 'tone-err' : ''));
-    sub.appendChild(mkMini('เข้าเว็บทั่วไป (Allowed)', String(sec.allowed_hits), ''));
-    sub.appendChild(mkMini('จำนวนโดเมน', String(sec.unique_domains || 0), ''));
-    sub.appendChild(mkMini('จำนวนเครื่อง', String(sec.unique_devices || 0), ''));
+    sub.appendChild(mkMini('ถูกบล็อก (Denied)', fmtN(sec.denied_hits), sec.denied_hits > 0 ? 'tone-err' : ''));
+    sub.appendChild(mkMini('เข้าเว็บทั่วไป (Allowed)', fmtN(sec.allowed_hits), ''));
+    sub.appendChild(mkMini('จำนวนโดเมน', fmtN(sec.unique_domains), ''));
+    sub.appendChild(mkMini('จำนวนเครื่อง', fmtN(sec.unique_devices), ''));
     kpiGrid.appendChild(sub);
     host.appendChild(kpiGrid);
 
@@ -5040,12 +5041,12 @@
     (sec.by_category || []).slice(0, 15).forEach(function (c) {
       var tr = el('tr');
       tr.appendChild(el('td', '', c.category));
-      tr.appendChild(el('td', 'dev-mono', String(c.hits)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(c.hits)));
       var tdDen = el('td');
-      tdDen.appendChild(el('span', 'badge ' + (c.denied_hits > 0 ? 'err' : 'muted'), String(c.denied_hits)));
+      tdDen.appendChild(el('span', 'badge ' + (c.denied_hits > 0 ? 'err' : 'muted'), fmtN(c.denied_hits)));
       tr.appendChild(tdDen);
-      tr.appendChild(el('td', 'dev-mono', String(c.unique_domains)));
-      tr.appendChild(el('td', 'dev-mono', String(c.unique_devices)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(c.unique_domains)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(c.unique_devices)));
       catBdy.appendChild(tr);
     });
     catTbl.appendChild(catBdy);
@@ -5068,8 +5069,8 @@
       var tdAct = el('td');
       tdAct.appendChild(el('span', 'badge ' + (d.action === 'Denied' ? 'err' : 'muted'), d.action === 'Denied' ? 'บล็อก' : 'อนุญาต'));
       tr.appendChild(tdAct);
-      tr.appendChild(el('td', 'dev-mono', String(d.hits)));
-      tr.appendChild(el('td', 'dev-mono', String(d.unique_devices)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(d.hits)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(d.unique_devices)));
       domBdy.appendChild(tr);
     });
     domTbl.appendChild(domBdy);
@@ -5093,11 +5094,11 @@
       tr.appendChild(el('td', 'site-code', dv.site_code ? (dv.site_code + ' ' + dv.site_name) : 'ยังไม่ผูกสาขา'));
       var devLabel = (dv.computer_name || dv.label || dv.mac) + (dv.role ? ' (' + dv.role + ')' : '') + ' · ' + dv.mac + (dv.ip ? ' · ' + dv.ip : '');
       tr.appendChild(el('td', 'dev-mono', devLabel));
-      tr.appendChild(el('td', 'dev-mono', String(dv.hits)));
+      tr.appendChild(el('td', 'dev-mono', fmtN(dv.hits)));
       var tdDen = el('td');
-      tdDen.appendChild(el('span', 'badge ' + (dv.denied_hits > 0 ? 'err' : 'muted'), String(dv.denied_hits)));
+      tdDen.appendChild(el('span', 'badge ' + (dv.denied_hits > 0 ? 'err' : 'muted'), fmtN(dv.denied_hits)));
       tr.appendChild(tdDen);
-      var topDoms = (dv.top_domains || []).map(function (td) { return td.domain + ' (' + td.hits + ')'; }).join(', ');
+      var topDoms = (dv.top_domains || []).map(function (td) { return td.domain + ' (' + fmtN(td.hits) + ')'; }).join(', ');
       tr.appendChild(el('td', 'dev-mono', topDoms || '-'));
       devBdy.appendChild(tr);
     });
